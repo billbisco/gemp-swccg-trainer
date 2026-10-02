@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/billbisco/gemp-swccg-trainer/schemas/soft-metagame-belief.v1.schema.json",
+  "title": "Soft metagame belief v1 (stub store record)",
+  "description": "Cross-game opponent belief. Soft inclusion or similarity weights only. Must not be initialized from the gym's loaded opponent deck file. Not the per-decision seenHistory dump. No updater is implemented with this schema.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "beliefId",
+    "cards",
+    "seededFromExactOpponentDeck"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "beliefId": {
+      "type": "string"
+    },
+    "format": {
+      "type": "string"
+    },
+    "side": {
+      "type": "string",
+      "enum": [
+        "DARK",
+        "LIGHT"
+      ]
+    },
+    "seededFromExactOpponentDeck": {
+      "type": "boolean",
+      "const": false
+    },
+    "cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "blueprintId",
+          "inclusionWeight"
+        ],
+        "properties": {
+          "blueprintId": {
+            "type": "string"
+          },
+          "inclusionWeight": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "note": {
+      "type": "string"
+    }
+  },
+  "not": {
+    "required": [
+      "opponentDeckPriorKnown"
+    ]
+  },
+  "additionalProperties": false
+}

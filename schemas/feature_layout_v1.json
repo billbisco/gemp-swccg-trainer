@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "name": "FeatureLayoutV1",
+  "packedDim": 128,
+  "dtype": "float32",
+  "seenHistoryCap": 64,
+  "seenHistoryCapRange": [
+    32,
+    64
+  ],
+  "forbiddenKeys": [
+    "opponentDeckPriorKnown"
+  ],
+  "notes": [
+    "Shared by trainer schemas and com.gempukku.swccgo.ai.features.FeatureLayoutV1.",
+    "Bags are not flattened into this vector. packed is a summary only.",
+    "Training and strength gates use random seeds. This file is not a seed."
+  ],
+  "groups": [
+    {
+      "name": "phaseOneHot",
+      "start": 0,
+      "length": 9,
+      "labels": [
+        "PLAY_STARTING_CARDS",
+        "ACTIVATE",
+        "CONTROL",
+        "DEPLOY",
+        "BATTLE",
+        "MOVE",
+        "DRAW",
+        "END_OF_TURN",
+        "BETWEEN_TURNS"
+      ],
+      "note": "One-hot of GameState phase. Side is not a one-hot here; side is a scalar/feature elsewhere (one pack, both seats)."
+    },
+    {
+      "name": "decisionTypeOneHot",
+      "start": 9,
+      "length": 7,
+      "labels": [
+        "EMPTY",
+        "INTEGER",
+        "MULTIPLE_CHOICE",
+        "ARBITRARY_CARDS",
+        "CARD_ACTION_CHOICE",
+        "ACTION_CHOICE",
+        "CARD_SELECTION"
+      ],
+      "note": "One-hot of AwaitingDecision type."
+    },
+    {
+      "name": "scalars",
+      "start": 16,
+      "length": 45,
+      "labels": [
+        "darkTurn",
+        "lightTurn",
+        "deciderTurn",
+        "opponentTurn",
+        "darkLF",
+        "lightLF",
+        "deciderLF",
+        "opponentLF",
+        "lfDiff",
+        "darkForceGen",
+        "lightForceGen",
+        "deciderForceGen",
+        "opponentForceGen",
+        "darkHandSize",
+        "lightHandSize",
+        "deciderHandSize",
+        "opponentHandSize",
+        "darkReserveSize",
+        "darkForcePileSize",
+        "darkUsedSize",
+        "darkLostSize",
+        "lightReserveSize",
+        "lightForcePileSize",
+        "lightUsedSize",
+        "lightLostSize",
+        "deciderReserveSize",
+        "deciderForcePileSize",
+        "deciderUsedSize",
+        "deciderLostSize",
+        "opponentReserveSize",
+        "opponentForcePileSize",
+        "opponentUsedSize",
+        "opponentLostSize",
+        "locationCount",
+        "optionCount",
+        "activateMin",
+        "activateMax",
+        "shufflesSinceLastSeenOwn",
+        "ownSeenDestinyCount",
+        "oppRevealedCount",
+        "ownRemainingEstimateUnique",
+        "ownHighDestinyRemainingEst",
+        "phaseIndex",
+        "publicInPlayCount",
+        "comboPieceCountInHand"
+      ],
+      "note": "Normalized numeric summary. Exact divisors live with InformationSetEncoder when it reads GameState; this file freezes indices only."
+    },
+    {
+      "name": "boardCounts",
+      "start": 61,
+      "length": 16,
+      "labels": [
+        "deciderCharacters",
+        "deciderStarships",
+        "deciderVehicles",
+        "deciderWeapons",
+        "deciderDevices",
+        "deciderEffects",
+        "deciderInterruptsInPlay",
+        "deciderLocationsOwned",
+        "opponentCharacters",
+        "opponentStarships",
+        "opponentVehicles",
+        "opponentWeapons",
+        "opponentDevices",
+        "opponentEffects",
+        "opponentInterruptsInPlay",
+        "opponentLocationsOwned"
+      ],
+      "note": "In-play category counts / 63. Public cards only."
+    },
+    {
+      "name": "proxies",
+      "start": 77,
+      "length": 6,
+      "labels": [
+        "objectiveProgressProxy",
+        "opponentObjectiveProgressProxy",
+        "forceDrainPotentialProxy",
+        "lifePressureProxy",
+        "recyclePressureProxy",
+        "comboReadinessProxy"
+      ],
+      "note": "Caller- or encoder-supplied proxies. Formulas are not frozen in this stub."
+    },
+    {
+      "name": "flags",
+      "start": 83,
+      "length": 8,
+      "labels": [
+        "duringForceDrain",
+        "deciderInitiatedForceDrain",
+        "duringBattle",
+        "hasObjective",
+        "opponentHasObjective",
+        "mustChoose",
+        "passAvailable",
+        "isActivateDecision"
+      ],
+      "note": "0 or 1."
+    },
+    {
+      "name": "handCategoryHist",
+      "start": 91,
+      "length": 16,
+      "labels": [
+        "handCharacter",
+        "handStarship",
+        "handVehicle",
+        "handWeapon",
+        "handDevice",
+        "handEffect",
+        "handInterrupt",
+        "handLocation",
+        "handEpicEvent",
+        "handJediTest",
+        "handObjective",
+        "handDefensiveShield",
+        "handCreature",
+        "handPodracer",
+        "handUtinni",
+        "handOther"
+      ],
+      "note": "Own-hand category histogram. Opponent hand identities are not a group."
+    },
+    {
+      "name": "seenDestinyHist",
+      "start": 107,
+      "length": 8,
+      "labels": [
+        "destinyBucket0",
+        "destinyBucket1",
+        "destinyBucket2",
+        "destinyBucket3",
+        "destinyBucket4",
+        "destinyBucket5",
+        "destinyBucket6",
+        "destinyBucket7"
+      ],
+      "note": "Histogram over the capped seenHistory destiny values (bucket 7 is 7+). Not a substitute for destinyRecycleAggregate."
+    },
+    {
+      "name": "oppRevealedCountNorm",
+      "start": 115,
+      "length": 1,
+      "labels": [
+        "oppRevealedCountNorm"
+      ],
+      "note": "Normalized length of the uncapped in-game opponentRevealed set."
+    },
+    {
+      "name": "ownHighDestinyRemainingEst",
+      "start": 116,
+      "length": 1,
+      "labels": [
+        "ownHighDestinyRemainingEstNorm"
+      ],
+      "note": "Normalized remaining high-destiny estimate from own prior minus known zones."
+    },
+    {
+      "name": "pad",
+      "start": 117,
+      "length": 11,
+      "labels": [
+        "pad0",
+        "pad1",
+        "pad2",
+        "pad3",
+        "pad4",
+        "pad5",
+        "pad6",
+        "pad7",
+        "pad8",
+        "pad9",
+        "pad10"
+      ],
+      "note": "Must stay 0 in v1. Do not silently widen PACKED_DIM."
+    }
+  ]
+}

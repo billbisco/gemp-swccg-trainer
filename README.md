@@ -7,6 +7,22 @@ Local self-play **collect + watch** UI for Star Wars CCG bots on GEMP.
 
 Companion to [`swccg-gemp`](https://github.com/billbisco/swccg-gemp) thin gym (`feature/headless-bot-vs-bot`). Architecture: see `/workspace/docs/swccg-bot-trainer-architecture.md` (local) / project docs.
 
+## Learned policy (not trained)
+
+Ratified design: [`docs/design-learned-policy-v1.md`](docs/design-learned-policy-v1.md) (2026-10-02).
+
+AckbarBot's next strategy is a hybrid information set (`float32[128]` packed summary + sparse bags), self-play, and side-split win rate plus Life Force differential. Keyword mutate/blend (`heuristic.v1`) stays the baseline backend. It is not the training path for this design, and **no learned pack has been trained or promoted**.
+
+Schema stubs (contracts only):
+
+- `schemas/information-set.v1.schema.json` — InformationSetV1; rejects `opponentDeckPriorKnown`
+- `schemas/feature_layout_v1.json` — frozen 128-d layout, `seenHistoryCap` 64
+- `schemas/experience.v1.schema.json` — step / episode lines; episode requires both final LFs
+- `schemas/soft-metagame-belief.v1.schema.json` — separate soft belief store; must not be seeded from the exact opposing list
+
+Gym slice (not wired into live traces yet) is `com.gempukku.swccgo.ai.features` on `swccg-gemp`.
+
+
 ## Quick start
 
 ```bash

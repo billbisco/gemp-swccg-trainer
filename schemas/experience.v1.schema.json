@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/billbisco/gemp-swccg-trainer/schemas/experience.v1.schema.json",
+  "title": "Experience JSONL record v1",
+  "description": "Learning experience lines. Collection is not learning. seedMode for training and strength gates is random.",
+  "type": "object",
+  "required": [
+    "type",
+    "schemaVersion",
+    "gameId",
+    "seedMode"
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "step",
+        "episode"
+      ]
+    },
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "gameId": {
+      "type": "string"
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "seedMode": {
+      "type": "string",
+      "enum": [
+        "random",
+        "fixed"
+      ]
+    },
+    "format": {
+      "type": "string"
+    },
+    "policyHandle": {
+      "type": "string"
+    },
+    "policyKind": {
+      "type": "string"
+    },
+    "champId": {
+      "type": "string"
+    },
+    "schemaVersionFeatures": {
+      "type": "integer"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "step"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "playerId",
+          "side",
+          "state",
+          "actions",
+          "chosenIndex"
+        ],
+        "properties": {
+          "playerId": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "DARK",
+              "LIGHT"
+            ]
+          },
+          "state": {
+            "$ref": "information-set.v1.schema.json"
+          },
+          "actions": {
+            "type": "array"
+          },
+          "chosenIndex": {
+            "type": "integer"
+          },
+          "chosenRaw": {
+            "type": "string"
+          },
+          "accepted": {
+            "type": "boolean"
+          },
+          "darkLF": {
+            "type": "integer"
+          },
+          "lightLF": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "episode"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "finished",
+          "darkLFFinal",
+          "lightLFFinal",
+          "seedMode"
+        ],
+        "properties": {
+          "finished": {
+            "type": "boolean"
+          },
+          "winner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "winnerSide": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "darkLFFinal": {
+            "type": "integer"
+          },
+          "lightLFFinal": {
+            "type": "integer"
+          },
+          "lfMarginDark": {
+            "type": "integer"
+          },
+          "lfMarginLight": {
+            "type": "integer"
+          },
+          "returnDark": {
+            "type": "number"
+          },
+          "returnLight": {
+            "type": "number"
+          },
+          "policyHandleDark": {
+            "type": "string"
+          },
+          "policyHandleLight": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

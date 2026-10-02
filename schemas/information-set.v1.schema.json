@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/billbisco/gemp-swccg-trainer/schemas/information-set.v1.schema.json",
+  "title": "InformationSetV1",
+  "description": "Decider legal information set for AckbarBot learned-policy v1. Hybrid: packed float32[128] plus sparse bags. Never an exact opponent decklist. Not a trained policy.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "format",
+    "side",
+    "playerId",
+    "phase",
+    "decisionType",
+    "seenHistoryCap",
+    "seenHistory",
+    "destinyRecycleAggregate",
+    "opponentRevealed",
+    "ownHand",
+    "deckPrior",
+    "packed"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "format": {
+      "type": "string"
+    },
+    "side": {
+      "type": "string",
+      "enum": [
+        "DARK",
+        "LIGHT"
+      ]
+    },
+    "playerId": {
+      "type": "string"
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "PLAY_STARTING_CARDS",
+        "ACTIVATE",
+        "CONTROL",
+        "DEPLOY",
+        "BATTLE",
+        "MOVE",
+        "DRAW",
+        "END_OF_TURN",
+        "BETWEEN_TURNS"
+      ]
+    },
+    "decisionType": {
+      "type": "string",
+      "enum": [
+        "EMPTY",
+        "INTEGER",
+        "MULTIPLE_CHOICE",
+        "ARBITRARY_CARDS",
+        "CARD_ACTION_CHOICE",
+        "ACTION_CHOICE",
+        "CARD_SELECTION"
+      ]
+    },
+    "optionCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "mustChoose": {
+      "type": "boolean"
+    },
+    "passAvailable": {
+      "type": "boolean"
+    },
+    "isActivateDecision": {
+      "type": "boolean"
+    },
+    "activateMin": {
+      "type": "integer"
+    },
+    "activateMax": {
+      "type": "integer"
+    },
+    "seenHistoryCap": {
+      "type": "integer",
+      "minimum": 32,
+      "maximum": 64
+    },
+    "seenHistory": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "destinyRecycleAggregate": {
+      "type": "array",
+      "description": "Full in-game aggregate. Not trimmed to seenHistoryCap.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "opponentRevealed": {
+      "type": "array",
+      "description": "Full in-game revealed opponent cards. Not an exact decklist. Not trimmed to seenHistoryCap.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "ownHand": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "blueprintId"
+        ],
+        "properties": {
+          "blueprintId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "destiny": {
+            "type": "number"
+          },
+          "ownerSide": {
+            "type": "string",
+            "enum": [
+              "DARK",
+              "LIGHT"
+            ]
+          },
+          "isDeciderOwned": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "deckPrior": {
+      "type": "object",
+      "description": "Decider's own starting deck only.",
+      "required": [
+        "source",
+        "blueprintMultiset"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "const": "startingDecklist"
+        },
+        "blueprintMultiset": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "titles": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "ownRemainingEstimate": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "publicInPlay": {
+      "type": "array"
+    },
+    "publicLost": {
+      "type": "array"
+    },
+    "publicTops": {
+      "type": "object"
+    },
+    "recycleSignals": {
+      "type": "object"
+    },
+    "boardCounts": {
+      "type": "object"
+    },
+    "proxies": {
+      "type": "object"
+    },
+    "packed": {
+      "type": "array",
+      "minItems": 128,
+      "maxItems": 128,
+      "items": {
+        "type": "number"
+      },
+      "description": "float32[128] summary. Bags are not flattened into this array."
+    },
+    "softMetagameBeliefRef": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional id into the separate soft-metagame store. Must not be the seated opponent deck file."
+    }
+  },
+  "not": {
+    "description": "Reject an exact opponent deck prior.",
+    "required": [
+      "opponentDeckPriorKnown"
+    ]
+  },
+  "additionalProperties": true
+}
