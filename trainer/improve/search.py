@@ -300,12 +300,12 @@ def evaluate_via_maven(
         f"-Dheadless.csv={csv_path}",
         f"-Dheadless.maxMillis={max_millis}",
         "-Dheadless.verbose=false",
-        "test",
     ]
     if dark_weights is not None:
         cmd.append(f"-Dheadless.dark.weights={dark_weights}")
     if light_weights is not None:
         cmd.append(f"-Dheadless.light.weights={light_weights}")
+    cmd.append("test")
 
     t0 = time.time()
     proc = subprocess.run(
