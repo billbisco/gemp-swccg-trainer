@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from trainer.export.champ import export_stub_champ
+from trainer.progress import build_progress
 from trainer.workers.orchestrator import ORCHESTRATOR, ROOT
 
 UI_DIR = ROOT / "ui"
@@ -61,6 +62,12 @@ def export_champ():
     return result
 
 
+@app.get("/api/progress")
+def progress():
+    # Compute from the live log/files on every request, then refresh STATUS.json.
+    return build_progress(write_status=True)
+
+
 @app.get("/api/config")
 def config():
     cfg_path = ROOT / "trainer.toml"
@@ -71,6 +78,14 @@ def config():
         "champs": str(CHAMPS_DIR),
         "trainer_toml": cfg_path.read_text() if cfg_path.exists() else "",
     }
+
+
+@app.get("/progress")
+def progress_page():
+    progress_path = UI_DIR / "progress.html"
+    if not progress_path.exists():
+        return HTMLResponse("<h1>Progress UI missing</h1>", status_code=500)
+    return FileResponse(progress_path)
 
 
 @app.get("/")
