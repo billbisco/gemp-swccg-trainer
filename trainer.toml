@@ -1,0 +1,36 @@
+# Day-1 local trainer config (collect + watch; learning comes later)
+
+[gym]
+# Prefer Maven headless batch on feature/headless-bot-vs-bot when available.
+# gym-cli shaded jar is not required for day-1 UI.
+gemp_repo = "/workspace/swccg-gemp"
+headless_branch = "feature/headless-bot-vs-bot"
+# process | mock  — auto falls back to mock if Maven/headless unavailable
+runner = "mock"
+format = "open"
+dark_ai = "BEGINNER"
+light_ai = "BEGINNER"
+max_millis = 180000
+max_decisions = 25000
+
+[decks]
+# Defaults requested by design: Librarian WC96. Headless spike currently hardcodes
+# Open 40 beginner decks — WC96 files are staged here for gym-cli file: decks later.
+dark = "decks/wc96-anh-dark.txt"
+light = "decks/wc96-anh-light.txt"
+# Actual day-1 playable decks for Maven headless:
+playable_dark = "decks/open40-beginner-dark.txt"
+playable_light = "decks/open40-beginner-light.txt"
+dark_name = "P-ANH 1996 World Champion (Dark)"
+light_name = "P-ANH 1996 World Champion (Light)"
+
+[workers]
+worker_mode = "process"
+batch_games_k = 1
+workers = 1
+seed_base = 42
+disk_budget_gb = 20
+
+[ui]
+host = "0.0.0.0"
+port = 8765

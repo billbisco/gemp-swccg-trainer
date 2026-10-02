@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GEMP SWCCG Trainer</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header>
+    <h1>GEMP SWCCG Trainer</h1>
+    <p class="tagline">Day-1 collect + watch · learning comes later (improve stage)</p>
+  </header>
+
+  <section class="panel controls">
+    <button id="btn-start" class="primary">Start</button>
+    <button id="btn-pause">Pause</button>
+    <button id="btn-watch">Watch last game</button>
+    <button id="btn-export">Export champ</button>
+    <label class="mode">
+      Runner
+      <select id="mode">
+        <option value="auto">auto (maven → mock)</option>
+        <option value="mock">mock</option>
+        <option value="maven">maven</option>
+      </select>
+    </label>
+  </section>
+
+  <section class="panel metrics">
+    <h2>Status</h2>
+    <div id="status" class="grid">
+      <div><span class="k">state</span><span id="m-status">—</span></div>
+      <div><span class="k">mode</span><span id="m-mode">—</span></div>
+      <div><span class="k">run</span><span id="m-run">—</span></div>
+      <div><span class="k">games</span><span id="m-games">0</span></div>
+      <div><span class="k">dark WR</span><span id="m-dark">—</span></div>
+      <div><span class="k">light WR</span><span id="m-light">—</span></div>
+      <div><span class="k">games/h</span><span id="m-gph">—</span></div>
+      <div><span class="k">runs/</span><span id="m-runs" class="path">—</span></div>
+    </div>
+    <ul id="notes" class="notes"></ul>
+  </section>
+
+  <section class="panel watch" id="watch-panel" hidden>
+    <h2>Last game</h2>
+    <pre id="watch-summary" class="summary"></pre>
+    <p class="paths">
+      <strong>Traces:</strong> <code id="watch-traces">—</code><br />
+      <strong>Replay folder:</strong> <code id="watch-replay">—</code>
+    </p>
+    <div class="timeline-wrap">
+      <table id="timeline">
+        <thead>
+          <tr>
+            <th>#</th><th>Side</th><th>Phase</th><th>Type</th><th>Chosen</th><th>DS LF</th><th>LS LF</th><th>Text</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel export" id="export-panel" hidden>
+    <h2>Exported champ</h2>
+    <pre id="export-out" class="summary"></pre>
+  </section>
+
+  <footer>
+    <p>Default decks (configured): Librarian <em>P-ANH 1996 World Champion (Dark/Light)</em> — staged under <code>decks/</code>.
+      Maven headless spike currently plays <strong>Open 40 Beginner</strong> until gym accepts <code>file:</code> decks.</p>
+  </footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>

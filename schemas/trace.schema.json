@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gempukku.github.io/schemas/trace.schema.json",
+  "title": "Decision trace JSONL line (day-1 stub)",
+  "description": "Spike-compatible compact decision rows; header/trailer types optional day-1.",
+  "type": "object",
+  "properties": {
+    "type": { "type": "string", "enum": ["header", "decision", "outcome", "trailer"] },
+    "schemaVersion": { "type": "integer" },
+    "gameId": { "type": "string" },
+    "gameIndex": { "type": "integer" },
+    "decisionIndex": { "type": "integer" },
+    "playerId": { "type": "string" },
+    "side": { "type": "string" },
+    "aiSkill": { "type": "string" },
+    "turn": { "type": "integer" },
+    "phase": { "type": "string" },
+    "decisionType": { "type": "string" },
+    "chosen": { "type": ["string", "null"] },
+    "accepted": { "type": "boolean" },
+    "darkLF": { "type": "integer" },
+    "lightLF": { "type": "integer" },
+    "winner": { "type": ["string", "null"] },
+    "finished": { "type": "boolean" }
+  },
+  "additionalProperties": true
+}

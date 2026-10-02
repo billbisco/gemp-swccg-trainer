@@ -1,0 +1,5 @@
+{
+  "name": 'Open 40 card - Beginner Light',
+  "source": "swccg-gemp/src/db-scripts/sample_decks.sql",
+  "librarian": true
+}

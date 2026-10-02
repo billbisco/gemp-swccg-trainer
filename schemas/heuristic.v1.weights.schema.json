@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gempukku.github.io/schemas/heuristic.v1.weights.schema.json",
+  "title": "heuristic.v1 weights",
+  "type": "object",
+  "required": ["base", "actionWeights", "actionPenalties", "choiceWeights", "choicePenalties", "cardHints"],
+  "properties": {
+    "base": { "type": "string", "enum": ["BEGINNER", "ADVANCED"] },
+    "actionWeights": { "type": "array", "items": { "$ref": "#/$defs/kw" }, "minItems": 1 },
+    "actionPenalties": { "type": "array", "items": { "$ref": "#/$defs/kw" }, "minItems": 1 },
+    "choiceWeights": { "type": "array", "items": { "$ref": "#/$defs/kw" }, "minItems": 1 },
+    "choicePenalties": { "type": "array", "items": { "$ref": "#/$defs/kw" }, "minItems": 1 },
+    "cardHints": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+  },
+  "$defs": {
+    "kw": {
+      "type": "object",
+      "required": ["k", "w"],
+      "properties": {
+        "k": { "type": "string" },
+        "w": { "type": "number" }
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+"""gemp-swccg-trainer package."""
