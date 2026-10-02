@@ -359,6 +359,7 @@ def summarize_csv(csv_path: Path) -> dict[str, Any]:
     dark_wins = light_wins = errors = 0
     decisions: list[int] = []
     durations: list[float] = []
+    formats: set[str] = set()
     rows = 0
     if not csv_path.is_file():
         return {
@@ -392,8 +393,11 @@ def summarize_csv(csv_path: Path) -> dict[str, Any]:
                 durations.append(float(row["elapsedMs"]))
             except (KeyError, ValueError):
                 pass
+            fmt = (row.get("format") or "").strip()
+            if fmt:
+                formats.add(fmt)
     finished = dark_wins + light_wins
-    return {
+    out = {
         "games": rows,
         "finished": finished,
         "darkWins": dark_wins,
@@ -404,6 +408,9 @@ def summarize_csv(csv_path: Path) -> dict[str, Any]:
         "avgDecisions": (sum(decisions) / len(decisions)) if decisions else None,
         "avgDurationMs": (sum(durations) / len(durations)) if durations else None,
     }
+    if formats:
+        out["format"] = sorted(formats)[0] if len(formats) == 1 else sorted(formats)
+    return out
 
 
 def elo_from_score(score: float, n: int, prior: float = 1500.0) -> float:
