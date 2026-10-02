@@ -397,8 +397,7 @@ def run_round(
                 baseline_dark_rate=baseline_dark,
                 baseline_light_rate=baseline_light,
             )
-            (round_dir / "confirm.json").write_text(json.dumps(conf, indent=2, default=str) + "
-")
+            (round_dir / "confirm.json").write_text(json.dumps(conf, indent=2, default=str) + "\n")
             result["confirm"] = {k: conf.get(k) for k in ("passed", "combinedWinRate", "reason", "darkDelta", "lightDelta")}
             print(f"[confirm] passed={conf.get('passed')} WR={conf.get('combinedWinRate')}", flush=True)
             if not conf.get("passed"):
