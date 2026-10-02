@@ -210,7 +210,7 @@ def gate_vs_opponent(
 def git_push_trainer(message: str) -> str | None:
     """Commit + push trainer changes. Returns commit URL or None."""
     try:
-        subprocess.run(["git", "add", "champs", "docs", "trainer", "runs/wc96-loop/.gitkeep"], cwd=ROOT, check=False)
+        subprocess.run(["git", "add", "champs", "docs", "trainer"], cwd=ROOT, check=False)
         # only stage report docs + champs packs (not huge runs)
         st = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True)
         if not st.stdout.strip():
@@ -384,6 +384,28 @@ def run_round(
         url = git_push_trainer(f"Promote {new_id} (WC96 loop round {round_idx})")
         result["commitUrl"] = url
         print(f"[PROMOTE] {new_id} {url}", flush=True)
+        # Larger confirmation vs BEGINNER (soft gates have been wrong before).
+        try:
+            confirm_n = max(gate_n, 20)
+            print(f"[confirm] re-gate {new_id} vs BEGINNER N={confirm_n}/side …", flush=True)
+            conf = gate_vs_opponent(
+                work_dir=round_dir / "confirm",
+                candidate_weights=Path(pack["dir"]) / "weights.json",
+                opponent_weights=None,
+                games_per_side=confirm_n,
+                label_prefix="confirm",
+                baseline_dark_rate=baseline_dark,
+                baseline_light_rate=baseline_light,
+            )
+            (round_dir / "confirm.json").write_text(json.dumps(conf, indent=2, default=str) + "
+")
+            result["confirm"] = {k: conf.get(k) for k in ("passed", "combinedWinRate", "reason", "darkDelta", "lightDelta")}
+            print(f"[confirm] passed={conf.get('passed')} WR={conf.get('combinedWinRate')}", flush=True)
+            if not conf.get("passed"):
+                print("[confirm] WARNING: soft promote did not hold at larger N — keep searching", flush=True)
+        except Exception as ce:
+            print(f"[confirm] skipped: {ce}", flush=True)
+
     else:
         report = (
             f"# WC96 loop round {round_idx} — no promote\n\n"

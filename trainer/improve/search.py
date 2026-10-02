@@ -277,6 +277,36 @@ def evaluate_via_maven(
     games: int,
     label: str,
     max_millis: int = 300_000,
+    workers: int | None = None,
+) -> dict[str, Any]:
+    """Eval via parallel direct-JVM HeadlessBotVsBotBatch workers (replay/traces off).
+
+    `gemp_src` kept for API compat; classpath comes from gym.classpath.
+    Set workers via arg or env GEMP_GYM_WORKERS (default 6).
+    """
+    from trainer.improve.gym_parallel import evaluate_parallel
+    import os
+    w = workers if workers is not None else int(os.environ.get("GEMP_GYM_WORKERS", "6"))
+    return evaluate_parallel(
+        run_dir=Path(run_dir),
+        dark_weights=dark_weights,
+        light_weights=light_weights,
+        games=games,
+        label=label,
+        workers=w,
+        max_millis=max_millis,
+    )
+
+
+def evaluate_via_maven_serial_legacy(
+    *,
+    gemp_src: Path,
+    run_dir: Path,
+    dark_weights: Path | None,
+    light_weights: Path | None,
+    games: int,
+    label: str,
+    max_millis: int = 300_000,
 ) -> dict[str, Any]:
     """Run HeadlessBotVsBotBatchTest with optional weight overlays; parse CSV."""
     run_dir = Path(run_dir)
