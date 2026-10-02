@@ -295,14 +295,18 @@ def run_round(
         )
         print(f"[gate] {cid} vs BEGINNER → {g_beg['passed']} {g_beg['combinedWinRate']}", flush=True)
         print(f"[gate] {cid} vs champ {champ_id} N={gate_n}/side …", flush=True)
+        # Equal-policy WC96 side rates ≈ deck asymmetry (not 0.5/0.5).
+        # Prefer this-round collect rates when available; else BEGINNER collect priors.
+        ch_base_dark = float(collect.get("darkWinRate") or baseline_dark)
+        ch_base_light = float(collect.get("lightWinRate") or baseline_light)
         g_ch = gate_vs_opponent(
             work_dir=round_dir / "gate" / cid / "vs-champ",
             candidate_weights=wpath,
             opponent_weights=champ_w,
             games_per_side=gate_n,
             label_prefix="vschamp",
-            baseline_dark_rate=0.5,
-            baseline_light_rate=0.5,
+            baseline_dark_rate=ch_base_dark,
+            baseline_light_rate=ch_base_light,
         )
         print(f"[gate] {cid} vs champ → {g_ch['passed']} {g_ch['combinedWinRate']}", flush=True)
         entry = {"id": cid, "vsBeginner": g_beg, "vsChamp": g_ch, "weightsPath": str(wpath)}

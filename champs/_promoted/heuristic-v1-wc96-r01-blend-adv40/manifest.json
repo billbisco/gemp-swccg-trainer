@@ -1,0 +1,26 @@
+{
+  "manifestVersion": 1,
+  "id": "heuristic-v1-wc96-r01-blend-adv40",
+  "displayName": "WC96-Heuristic-R1",
+  "policyKind": "heuristic.v1",
+  "gymApiVersion": "0.0.0-day1",
+  "createdAt": "2026-10-02T12:34:40-04:00",
+  "parentId": "heuristic-v1-wc96-batch50-cand1",
+  "elo": null,
+  "ladderId": null,
+  "deckHints": [
+    "P-ANH 1996 World Champion (Dark)",
+    "P-ANH 1996 World Champion (Light)"
+  ],
+  "files": {
+    "weights": "weights.json"
+  },
+  "hash": {
+    "alg": "sha256",
+    "value": "94cd83298e6fae7cefce7d6f76369e7229e3f0ecdde07441d1b008f23ce027d6"
+  },
+  "signature": null,
+  "stub": false,
+  "note": "heuristic weight-search candidate",
+  "gatePassed": true
+}
