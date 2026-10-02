@@ -1,0 +1,199 @@
+{
+  "base": "BEGINNER",
+  "actionWeights": [
+    {
+      "k": "force drain",
+      "w": 151
+    },
+    {
+      "k": "initiate battle",
+      "w": 142
+    },
+    {
+      "k": "battle",
+      "w": 94
+    },
+    {
+      "k": "weapon",
+      "w": 52
+    },
+    {
+      "k": "fire",
+      "w": 47
+    },
+    {
+      "k": "deploy",
+      "w": 85
+    },
+    {
+      "k": "play",
+      "w": 37
+    },
+    {
+      "k": "move",
+      "w": 47
+    },
+    {
+      "k": "activate",
+      "w": 66
+    },
+    {
+      "k": "retrieve",
+      "w": 34
+    },
+    {
+      "k": "draw",
+      "w": 27
+    },
+    {
+      "k": "steal",
+      "w": 25
+    },
+    {
+      "k": "capture",
+      "w": 25
+    },
+    {
+      "k": "react",
+      "w": 20
+    },
+    {
+      "k": "take into hand",
+      "w": 30
+    }
+  ],
+  "actionPenalties": [
+    {
+      "k": "pass",
+      "w": -120
+    },
+    {
+      "k": "forfeit",
+      "w": -80
+    },
+    {
+      "k": "lose",
+      "w": -45
+    },
+    {
+      "k": "place in lost pile",
+      "w": -70
+    },
+    {
+      "k": "place in used pile",
+      "w": -35
+    },
+    {
+      "k": "return to hand",
+      "w": -30
+    },
+    {
+      "k": "sacrifice",
+      "w": -80
+    },
+    {
+      "k": "revert",
+      "w": -40
+    }
+  ],
+  "choiceWeights": [
+    {
+      "k": "draw",
+      "w": 40
+    },
+    {
+      "k": "retrieve",
+      "w": 35
+    },
+    {
+      "k": "deploy",
+      "w": 30
+    },
+    {
+      "k": "battle destiny",
+      "w": 35
+    },
+    {
+      "k": "weapon destiny",
+      "w": 35
+    },
+    {
+      "k": "activate",
+      "w": 30
+    },
+    {
+      "k": "force drain",
+      "w": 40
+    },
+    {
+      "k": "initiate",
+      "w": 30
+    },
+    {
+      "k": "capture",
+      "w": 20
+    },
+    {
+      "k": "steal",
+      "w": 20
+    },
+    {
+      "k": "use",
+      "w": 5
+    },
+    {
+      "k": "yes",
+      "w": 5
+    }
+  ],
+  "choicePenalties": [
+    {
+      "k": "lose",
+      "w": -45
+    },
+    {
+      "k": "forfeit",
+      "w": -60
+    },
+    {
+      "k": "lost pile",
+      "w": -50
+    },
+    {
+      "k": "used pile",
+      "w": -30
+    },
+    {
+      "k": "return to hand",
+      "w": -25
+    },
+    {
+      "k": "neither",
+      "w": -25
+    },
+    {
+      "k": "cancel",
+      "w": -20
+    },
+    {
+      "k": "pass",
+      "w": -30
+    }
+  ],
+  "cardHints": [
+    "pilot",
+    "weapon",
+    "character",
+    "starship",
+    "vehicle",
+    "droid",
+    "alien",
+    "jedi",
+    "sith",
+    "effect",
+    "interrupt",
+    "location",
+    "site",
+    "system"
+  ]
+}

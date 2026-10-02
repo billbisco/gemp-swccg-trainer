@@ -1,0 +1,341 @@
+{
+  "vsBeginner": {
+    "passed": true,
+    "reason": "PASS: dark 0.6666666666666666 (base 0.34, d=0.3266666666666666), light 0.5833333333333334 (base 0.66, d=-0.07666666666666666), combined 0.625 vs expected 0.500+0.05",
+    "candidateWins": 15,
+    "totalFinished": 24,
+    "combinedWinRate": 0.625,
+    "expectedWinRate": 0.5,
+    "baselineDarkRate": 0.34,
+    "baselineLightRate": 0.66,
+    "darkDelta": 0.3266666666666666,
+    "lightDelta": -0.07666666666666666,
+    "eloEst": 1588.7394998465425,
+    "asDark": {
+      "games": 12,
+      "finished": 12,
+      "darkWins": 8,
+      "lightWins": 4,
+      "errors": 0,
+      "darkWinRate": 0.6666666666666666,
+      "lightWinRate": 0.3333333333333333,
+      "avgDecisions": 1020.0,
+      "avgDurationMs": 9259.583333333334,
+      "label": "vsbeg-cand-dark",
+      "mavenExit": 0,
+      "wallSec": 27.62,
+      "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-dark.csv",
+      "log": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-dark.shards",
+      "workers": 6,
+      "shardGames": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "shards": [
+        {
+          "shard": 0,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 16.63,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-dark.shards/shard-00.csv",
+          "ok": true
+        },
+        {
+          "shard": 1,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 15.08,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-dark.shards/shard-01.csv",
+          "ok": true
+        },
+        {
+          "shard": 2,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 27.61,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-dark.shards/shard-02.csv",
+          "ok": true
+        },
+        {
+          "shard": 3,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 21.73,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-dark.shards/shard-03.csv",
+          "ok": true
+        },
+        {
+          "shard": 4,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 16.37,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-dark.shards/shard-04.csv",
+          "ok": true
+        },
+        {
+          "shard": 5,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 20.19,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-dark.shards/shard-05.csv",
+          "ok": true
+        }
+      ],
+      "gamesPerHour": 1564.3,
+      "engine": "parallel-jvm-cli"
+    },
+    "asLight": {
+      "games": 12,
+      "finished": 12,
+      "darkWins": 5,
+      "lightWins": 7,
+      "errors": 0,
+      "darkWinRate": 0.4166666666666667,
+      "lightWinRate": 0.5833333333333334,
+      "avgDecisions": 1219.25,
+      "avgDurationMs": 12989.333333333334,
+      "label": "vsbeg-cand-light",
+      "mavenExit": 0,
+      "wallSec": 54.83,
+      "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-light.csv",
+      "log": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-light.shards",
+      "workers": 6,
+      "shardGames": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "shards": [
+        {
+          "shard": 0,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 21.25,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-light.shards/shard-00.csv",
+          "ok": true
+        },
+        {
+          "shard": 1,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 18.74,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-light.shards/shard-01.csv",
+          "ok": true
+        },
+        {
+          "shard": 2,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 22.54,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-light.shards/shard-02.csv",
+          "ok": true
+        },
+        {
+          "shard": 3,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 24.51,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-light.shards/shard-03.csv",
+          "ok": true
+        },
+        {
+          "shard": 4,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 20.88,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-light.shards/shard-04.csv",
+          "ok": true
+        },
+        {
+          "shard": 5,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 54.83,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-beginner/vsbeg-cand-light.shards/shard-05.csv",
+          "ok": true
+        }
+      ],
+      "gamesPerHour": 787.9,
+      "engine": "parallel-jvm-cli"
+    },
+    "gamesPerSide": 12,
+    "opponent": "builtin-BEGINNER"
+  },
+  "vsChamp": {
+    "passed": true,
+    "reason": "PASS: dark 0.5833333333333334 (base 0.2833333333333333, d=0.30000000000000004), light 0.5833333333333334 (base 0.7166666666666667, d=-0.1333333333333333), combined 0.583 vs expected 0.500+0.05",
+    "candidateWins": 14,
+    "totalFinished": 24,
+    "combinedWinRate": 0.5833333333333334,
+    "expectedWinRate": 0.5,
+    "baselineDarkRate": 0.2833333333333333,
+    "baselineLightRate": 0.7166666666666667,
+    "darkDelta": 0.30000000000000004,
+    "lightDelta": -0.1333333333333333,
+    "eloEst": 1558.4512142712952,
+    "asDark": {
+      "games": 12,
+      "finished": 12,
+      "darkWins": 7,
+      "lightWins": 5,
+      "errors": 0,
+      "darkWinRate": 0.5833333333333334,
+      "lightWinRate": 0.4166666666666667,
+      "avgDecisions": 1511.0,
+      "avgDurationMs": 13025.333333333334,
+      "label": "vschamp-cand-dark",
+      "mavenExit": 0,
+      "wallSec": 43.47,
+      "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-dark.csv",
+      "log": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-dark.shards",
+      "workers": 6,
+      "shardGames": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "shards": [
+        {
+          "shard": 0,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 30.04,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-dark.shards/shard-00.csv",
+          "ok": true
+        },
+        {
+          "shard": 1,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 22.41,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-dark.shards/shard-01.csv",
+          "ok": true
+        },
+        {
+          "shard": 2,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 43.47,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-dark.shards/shard-02.csv",
+          "ok": true
+        },
+        {
+          "shard": 3,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 25.02,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-dark.shards/shard-03.csv",
+          "ok": true
+        },
+        {
+          "shard": 4,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 21.16,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-dark.shards/shard-04.csv",
+          "ok": true
+        },
+        {
+          "shard": 5,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 20.07,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-dark.shards/shard-05.csv",
+          "ok": true
+        }
+      ],
+      "gamesPerHour": 993.7,
+      "engine": "parallel-jvm-cli"
+    },
+    "asLight": {
+      "games": 12,
+      "finished": 12,
+      "darkWins": 5,
+      "lightWins": 7,
+      "errors": 0,
+      "darkWinRate": 0.4166666666666667,
+      "lightWinRate": 0.5833333333333334,
+      "avgDecisions": 1064.5833333333333,
+      "avgDurationMs": 13192.583333333334,
+      "label": "vschamp-cand-light",
+      "mavenExit": 0,
+      "wallSec": 32.71,
+      "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-light.csv",
+      "log": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-light.shards",
+      "workers": 6,
+      "shardGames": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "shards": [
+        {
+          "shard": 0,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 32.71,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-light.shards/shard-00.csv",
+          "ok": true
+        },
+        {
+          "shard": 1,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 24.91,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-light.shards/shard-01.csv",
+          "ok": true
+        },
+        {
+          "shard": 2,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 22.02,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-light.shards/shard-02.csv",
+          "ok": true
+        },
+        {
+          "shard": 3,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 25.88,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-light.shards/shard-03.csv",
+          "ok": true
+        },
+        {
+          "shard": 4,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 31.6,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-light.shards/shard-04.csv",
+          "ok": true
+        },
+        {
+          "shard": 5,
+          "games": 2,
+          "exit": 0,
+          "wallSec": 28.49,
+          "csv": "/workspace/gemp-swccg-trainer/runs/wc96-loop/round08-20261002-134542/gate/blend-adv25/vs-champ/vschamp-cand-light.shards/shard-05.csv",
+          "ok": true
+        }
+      ],
+      "gamesPerHour": 1320.6,
+      "engine": "parallel-jvm-cli"
+    },
+    "gamesPerSide": 12,
+    "opponent": "/workspace/gemp-swccg-trainer/champs/_promoted/heuristic-v1-wc96-r07-blend-adv25/weights.json"
+  },
+  "passed": true
+}
