@@ -460,7 +460,9 @@ class Orchestrator:
         if csv_path.exists():
             lines = csv_path.read_text().strip().splitlines()
             if len(lines) >= 2:
-                # gameIndex,darkAi,lightAi,winner,darkDecisions,lightDecisions,darkTurns,lightTurns,elapsedMs,error
+                # Positional prefix is stable. Later columns (format, decks, error,
+                # darkLifeForce, lightLifeForce) are read by name when the header has them.
+                header = lines[0].split(",")
                 parts = lines[-1].split(",")
                 if len(parts) >= 9:
                     winner = parts[3] or None
@@ -469,6 +471,22 @@ class Orchestrator:
                         decisions = int(parts[4] or 0) + int(parts[5] or 0)
                         ds_turn = int(parts[6] or 0)
                         ls_turn = int(parts[7] or 0)
+                    except ValueError:
+                        pass
+                    def named(col: str):
+                        if col not in header:
+                            return None
+                        i = header.index(col)
+                        if i >= len(parts) or parts[i] == "":
+                            return None
+                        return parts[i]
+                    try:
+                        dlf = named("darkLifeForce")
+                        llf = named("lightLifeForce")
+                        if dlf is not None:
+                            dark_lf = int(dlf)
+                        if llf is not None:
+                            light_lf = int(llf)
                     except ValueError:
                         pass
         if traces_path.exists():

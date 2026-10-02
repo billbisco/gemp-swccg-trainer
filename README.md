@@ -19,6 +19,7 @@ Schema stubs (contracts only):
 - `schemas/feature_layout_v1.json` — frozen 128-d layout, `seenHistoryCap` 64
 - `schemas/experience.v1.schema.json` — step / episode lines; episode requires both final LFs
 - `schemas/soft-metagame-belief.v1.schema.json` — separate soft belief store; must not be seeded from the exact opposing list
+- `schemas/linear.v1.weights.schema.json` — gym-cli `LinearPolicyAi` pack (`W` over packed 128 + optional bag hash + actionFeat 24). Not a training loop. Not for Hall.
 
 Gym slice (not wired into live traces yet) is `com.gempukku.swccgo.ai.features` on `swccg-gemp`.
 

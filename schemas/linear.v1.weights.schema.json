@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gempukku.github.io/schemas/linear.v1.weights.schema.json",
+  "title": "linear.v1 weights",
+  "description": "Gym-cli LinearPolicyAi pack (not Hall). Score is bias + dot(W, concat(packed[128], bagHash[bagHashDim], actionFeat[24])). Greedy argmax over legal actions. Zeros W is a legal stub and is not a trained champ. Do not distill W from YodaBot/AdvancedAi. Training loop is not this file.",
+  "type": "object",
+  "required": ["schema", "featureSchemaVersion", "packedDim", "bagHashDim", "actionFeatDim", "bias", "W"],
+  "properties": {
+    "schema": { "type": "string", "const": "linear.v1" },
+    "featureSchemaVersion": { "type": "integer", "const": 1 },
+    "packedDim": { "type": "integer", "const": 128 },
+    "bagHashDim": { "type": "integer", "minimum": 0, "maximum": 64 },
+    "actionFeatDim": {
+      "type": "integer",
+      "const": 24,
+      "description": "0 pass, 1 integerNorm, 2 indexNorm, 3-18 text hash, 19-22 blueprint hash, 23 ones. Matches com.gempukku.swccgo.ai.models.LinearPolicyAi."
+    },
+    "bias": { "type": "number" },
+    "W": {
+      "type": "array",
+      "minItems": 152,
+      "maxItems": 216,
+      "items": { "type": "number" },
+      "description": "Length must be packedDim + bagHashDim + actionFeatDim (152 when bagHashDim is 0, 168 when bagHashDim is 16)."
+    }
+  },
+  "additionalProperties": true
+}
