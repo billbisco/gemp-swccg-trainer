@@ -1061,6 +1061,8 @@ def run(argv: list[str] | None = None) -> dict[str, Any]:
                         help="with BEGINNER, also run the pack as Light (doubles games)")
     parser.add_argument("--init", choices=("zeros", "small-random", "tiebreak"), default="tiebreak",
                         help="zeros uses the gym anti-stall prior (no external tiebreak file); tiebreak bakes pass/integer +0.05 into W")
+    parser.add_argument("--weights", type=Path, default=None,
+                        help="start from an existing linear.v1 weights JSON instead of --init")
     parser.add_argument("--lr", type=float, default=0.1)
     parser.add_argument("--live", action="store_true", help="run headless gym games (random shuffle, no seed)")
     parser.add_argument("--dry-run", action="store_true", help="synthetic outcomes only; no JVM")
@@ -1082,7 +1084,7 @@ def run(argv: list[str] | None = None) -> dict[str, Any]:
     run_dir = args.out_dir or (REPO / "runs" / "linear-selfplay" / stamp)
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    pack = make_pack(args.init)
+    pack = load_pack(args.weights) if args.weights is not None else make_pack(args.init)
     init_path = run_dir / "init.linear.json"
     write_pack(init_path, pack)
 
@@ -1123,7 +1125,7 @@ def run(argv: list[str] | None = None) -> dict[str, Any]:
         "limitation": LIMITATION,
         "source": source,
         "opponent": args.opponent,
-        "init": args.init,
+        "init": str(args.weights) if args.weights is not None else args.init,
         "gamesRequested": args.games,
         "promoted": False,
         "distilledFrom": None,
