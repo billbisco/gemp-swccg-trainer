@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WC96 training progress</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { max-width: 900px; margin: 2rem auto; padding: 0 1rem; background: #111827; color: #e5e7eb; }
+    h1 { margin-bottom: .25rem; } .muted { color: #9ca3af; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .75rem; margin: 1.5rem 0; }
+    .card { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 1rem; }
+    .label { color: #9ca3af; font-size: .85rem; } .value { font-size: 1.35rem; margin-top: .35rem; }
+    pre { white-space: pre-wrap; word-break: break-word; background: #030712; padding: 1rem; border-radius: 8px; }
+    .yes { color: #86efac; } .no { color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <h1>WC96 training progress</h1>
+  <div class="muted">Live files; refreshes every 30 seconds. <span id="updated">Loading…</span></div>
+  <section class="grid">
+    <div class="card"><div class="label">Loop alive</div><div id="alive" class="value">—</div></div>
+    <div class="card"><div class="label">Current champ</div><div id="champ" class="value">—</div></div>
+    <div class="card"><div class="label">Round</div><div id="round" class="value">—</div></div>
+    <div class="card"><div class="label">Last collect WR (Dark / Light)</div><div id="wr" class="value">—</div></div>
+    <div class="card"><div class="label">Games / hour</div><div id="gph" class="value">—</div></div>
+  </section>
+  <div class="card"><div class="label">Last promote / gate</div><pre id="gate">—</pre></div>
+  <h2>Recent log</h2>
+  <pre id="tail">Loading…</pre>
+  <script>
+    const text = (value, fallback = "—") => value === null || value === undefined || value === "" ? fallback : String(value);
+    const pct = value => value === null || value === undefined ? "—" : `${(Number(value) * 100).toFixed(1)}%`;
+    async function refresh() {
+      try {
+        const response = await fetch('/api/progress', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const p = await response.json();
+        const alive = document.getElementById('alive');
+        alive.textContent = p.loopAlive ? 'Y' : 'N';
+        alive.className = `value ${p.loopAlive ? 'yes' : 'no'}`;
+        document.getElementById('champ').textContent = text(p.currentChamp);
+        document.getElementById('round').textContent = text(p.roundNumber);
+        document.getElementById('wr').textContent = `${pct(p.lastCollectWR?.dark)} / ${pct(p.lastCollectWR?.light)}`;
+        document.getElementById('gph').textContent = text(p.gamesPerHour);
+        document.getElementById('gate').textContent = text(p.lastPromoteGateLine);
+        document.getElementById('tail').textContent = (p.tail || []).join('\n') || 'No log lines yet.';
+        document.getElementById('updated').textContent = `updated ${text(p.updatedAt)}`;
+      } catch (error) {
+        document.getElementById('updated').textContent = `error: ${error}`;
+      }
+    }
+    refresh();
+    setInterval(refresh, 30000);
+  </script>
+</body>
+</html>

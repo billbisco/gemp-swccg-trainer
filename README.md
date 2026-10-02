@@ -17,9 +17,22 @@ pip install -r requirements.txt
 python -m trainer.app
 ```
 
-Open in a browser:
+Open in a browser on the **same machine running the trainer**:
 
 - **http://127.0.0.1:8765/** (or the host you bound; default `0.0.0.0:8765`)
+- **http://127.0.0.1:8765/progress** — live WC96 loop monitor (refreshes every 30 seconds)
+
+`127.0.0.1` is local to the machine running `trainer.app`; a browser on another
+computer cannot use the box's localhost. Run the trainer locally on that computer
+(or use an explicitly configured network address).
+
+### Windows quick start
+
+From a clone of this repository, double-click `start-trainer.bat` (or run it from
+Command Prompt). It creates `.venv`, installs the requirements on first run, and
+starts the local server. Then open **http://127.0.0.1:8765/progress** in that same
+Windows browser. The monitor reads `runs/wc96-loop/` in that local clone, so a
+Windows copy will only show a loop started on Windows.
 
 ## UI controls
 
@@ -95,12 +108,14 @@ mvn -pl gemp-swccg-server -am -DfailIfNoTests=false \
 gemp-swccg-trainer/
 ├── trainer.toml          # parallelism, gym path, decks, UI port
 ├── trainer/app.py        # FastAPI entry
+├── trainer/progress.py   # live WC96 progress reader
 ├── trainer/workers/      # Start/Pause orchestrator
 ├── trainer/export/       # heuristic.v1 stub exporter
 ├── ui/                   # vanilla SPA
 ├── schemas/              # champ + trace stubs
 ├── decks/                # WC96 + Open40 contents
 ├── runs/                 # job artifacts (traces, metrics, replays/)
+├── scripts/write_status.py # optional STATUS.json refresh helper
 └── champs/               # exported packs
 ```
 
@@ -113,6 +128,7 @@ gemp-swccg-trainer/
 - `GET /api/watch`
 - `POST /api/export`
 - `GET /api/config`
+- `GET /api/progress` — live WC96 loop state; also refreshes `runs/wc96-loop/STATUS.json`
 
 ## Notes
 
