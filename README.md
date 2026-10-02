@@ -119,3 +119,16 @@ gemp-swccg-trainer/
 - Trainer is **separate** from the GEMP war.
 - Replay `xml.gz` is not produced until gym `HeadlessReplayWriter` lands; Watch still works via JSONL + folder path.
 - No secrets in this repo. Keep `runs/` local (gitignored except sample).
+
+## Improve / gate (minimal)
+
+Collection ≠ learning. After a collect batch:
+
+```bash
+PYTHONPATH=. python3 -c "from trainer.improve.search import random_search, gate_candidate, export_candidate_champ"
+# see docs/wc96-batch-50-REPORT.md for a worked WC96 example
+```
+
+Live eval needs gym `ConfigurableHeuristicAi` + `-Dheadless.dark.weights=` / `-Dheadless.light.weights=` on `feature/headless-bot-vs-bot`.
+Promoted packs (if gate passes) land under `champs/_promoted/`.
+
