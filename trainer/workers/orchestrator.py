@@ -102,9 +102,10 @@ class Orchestrator:
                 "configured_dark": self._cfg.get("decks", {}).get("dark_name"),
                 "configured_light": self._cfg.get("decks", {}).get("light_name"),
                 "playable_note": (
-                    "Maven headless spike hardcodes Open 40 Beginner decks; "
-                    "WC96 deck files are staged under decks/ for later file: loading."
+                    "Maven headless supports headless.decks=wc96 (P-ANH 1996) with "
+                    "premiere_anh + HeadlessReplayWriter xml.gz under runs/.../replays/."
                 ),
+                "sample_replay_dir": str(self.root / "runs" / "_sample" / "wc96-replay"),
             }
             return s
 
@@ -154,13 +155,27 @@ class Orchestrator:
             if summary_path.exists():
                 last = json.loads(summary_path.read_text())
         if not last:
-            # Fall back to sample
-            sample = self.root / "runs" / "_sample" / "sample-traces.jsonl"
+            # Fall back to committed WC96 sample replay + traces
+            sample_dir = self.root / "runs" / "_sample" / "wc96-replay"
+            sample_last = sample_dir / "last_game.json"
+            sample_traces = sample_dir / "game-0001.jsonl"
+            legacy = self.root / "runs" / "_sample" / "sample-traces.jsonl"
+            if sample_last.exists():
+                last = json.loads(sample_last.read_text())
+                return {
+                    "available": True,
+                    "summary": last,
+                    "timeline": self._read_jsonl(sample_traces, limit=500) if sample_traces.exists() else [],
+                    "replay_dir": str(sample_dir),
+                    "traces_path": str(sample_traces) if sample_traces.exists() else None,
+                    "run_dir": str(sample_dir),
+                    "message": "Showing committed WC96 sample (no live run yet). Click Start for a fresh game.",
+                }
             return {
                 "available": False,
                 "message": "No games yet. Click Start, or browse sample traces.",
-                "sample_traces_path": str(sample) if sample.exists() else None,
-                "timeline": self._read_jsonl(sample, limit=80) if sample.exists() else [],
+                "sample_traces_path": str(legacy) if legacy.exists() else None,
+                "timeline": self._read_jsonl(legacy, limit=80) if legacy.exists() else [],
                 "replay_dir": None,
             }
         traces = Path(last.get("traces_path") or "")
@@ -203,9 +218,10 @@ class Orchestrator:
                     "Writes plausible JSONL — not real GEMP games."
                 )
             else:
+                decks = self._cfg.get("gym", {}).get("decks", "wc96")
                 self.state.notes.append(
-                    "Running MAVEN headless batch (Open 40 Beginner decks). "
-                    "WC96 decks are staged but not yet loaded by the spike runner."
+                    f"Running MAVEN headless batch (decks={decks}, replay="
+                    f"{self._cfg.get('gym', {}).get('replay', True)})."
                 )
         game_index = 0
         try:
@@ -346,6 +362,9 @@ class Orchestrator:
         light = gym.get("light_ai", "BEGINNER")
         max_millis = int(gym.get("max_millis", 180000))
 
+        decks = gym.get("decks", "wc96")
+        fmt = gym.get("format", "premiere_anh" if decks == "wc96" else "open")
+        want_replay = bool(gym.get("replay", True))
         cmd = [
             "mvn",
             "-pl",
@@ -356,13 +375,18 @@ class Orchestrator:
             f"-Dheadless.games=1",
             f"-Dheadless.dark={dark}",
             f"-Dheadless.light={light}",
+            f"-Dheadless.decks={decks}",
+            f"-Dheadless.format={fmt}",
             f"-Dheadless.csv={csv_path}",
             f"-Dheadless.maxMillis={max_millis}",
             "-Dheadless.traces=true",
             f"-Dheadless.traces.path={traces_path}",
             "-Dheadless.verbose=false",
-            "test",
         ]
+        if want_replay:
+            cmd.append("-Dheadless.replay=true")
+            cmd.append(f"-Dheadless.replay.dir={replay_dir}")
+        cmd.append("test")
         # Note: Maven property paths for traces may be relative to module cwd.
         # Also write absolute via symlink after run if needed.
         env = os.environ.copy()
@@ -414,9 +438,9 @@ class Orchestrator:
                 dark_ai=dark,
                 light_ai=light,
                 mode="maven",
-                notes="Open 40 Beginner decks (spike hardcoded). WC96 not loaded by runner yet.",
+                notes=f"decks={decks} format={fmt} replay={want_replay}",
                 traces_path=str(traces_path),
-                replay_dir=str(replay_dir),
+                replay_dir=str(replay_dir / f"game-{game_index:04d}") if want_replay else str(replay_dir),
             )
         except subprocess.TimeoutExpired:
             with self._lock:
@@ -565,9 +589,11 @@ class Orchestrator:
         with traces_path.open("w") as f:
             for r in rows:
                 f.write(json.dumps(r) + "\n")
-        # Placeholder replay note (no xml.gz yet — HeadlessReplayWriter not day-1)
+        # Mock does not write xml.gz — point at committed WC96 sample for Watch.
+        sample = self.root / "runs" / "_sample" / "wc96-replay"
         (replay_dir / "README.txt").write_text(
-            "Replay xml.gz not produced day-1 (HeadlessReplayWriter pending gym G4).\n"
+            "MOCK games do not write GEMP xml.gz.\n"
+            f"See real sample at {sample}\n"
             f"Decision JSONL: {traces_path}\n"
         )
         elapsed = random.randint(800, 3500)

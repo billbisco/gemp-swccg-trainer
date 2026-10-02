@@ -54,7 +54,7 @@ function renderWatch(payload) {
   const summary = payload.summary || { message: payload.message, available: payload.available };
   document.getElementById("watch-summary").textContent = JSON.stringify(summary, null, 2);
   document.getElementById("watch-traces").textContent = payload.traces_path || payload.sample_traces_path || "—";
-  document.getElementById("watch-replay").textContent = payload.replay_dir || "(none yet — HeadlessReplayWriter pending)";
+  document.getElementById("watch-replay").textContent = payload.replay_dir || "(none yet — see runs/_sample/wc96-replay)";
   const tbody = document.querySelector("#timeline tbody");
   tbody.innerHTML = "";
   (payload.timeline || []).forEach((row) => {

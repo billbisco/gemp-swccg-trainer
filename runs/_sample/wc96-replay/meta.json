@@ -1,0 +1,23 @@
+{
+  "replayDir": "/workspace/gemp-swccg-trainer/runs/_sample/wc96-replay",
+  "winner": "~OzzelBot",
+  "winReason": "winner=~OzzelBot",
+  "loser": "~AckbarBot",
+  "loseReason": "lost to ~OzzelBot",
+  "recordingIds": {
+    "~OzzelBot": "z2lvxyskmomnws1c",
+    "~AckbarBot": "m8pchsostwv5wq7g"
+  },
+  "replayFiles": {
+    "~OzzelBot": "/workspace/gemp-swccg-trainer/runs/_sample/wc96-replay/~OzzelBot/z2lvxyskmomnws1c.xml.gz",
+    "~AckbarBot": "/workspace/gemp-swccg-trainer/runs/_sample/wc96-replay/~AckbarBot/m8pchsostwv5wq7g.xml.gz"
+  },
+  "gameId": "headless-4b50be6f-84b6-4c12-a7dd-f931ddf86c0f",
+  "format": "premiere_anh",
+  "darkDeck": "P-ANH 1996 World Champion (Dark)",
+  "lightDeck": "P-ANH 1996 World Champion (Light)",
+  "darkAi": "BEGINNER",
+  "lightAi": "BEGINNER",
+  "stopper": "finished",
+  "gameIndex": "1"
+}

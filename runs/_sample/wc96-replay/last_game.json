@@ -1,0 +1,31 @@
+{
+  "game_index": 1,
+  "game_id": "headless-4b50be6f-84b6-4c12-a7dd-f931ddf86c0f",
+  "winner": "~OzzelBot",
+  "finished": true,
+  "dark_lf": -1,
+  "light_lf": -1,
+  "dark_turns": 8,
+  "light_turns": 8,
+  "decisions": 1031,
+  "elapsed_ms": 8004,
+  "dark_ai": "BEGINNER",
+  "light_ai": "BEGINNER",
+  "mode": "maven",
+  "notes": "P-ANH 1996 World Champion Dark vs Light, format=premiere_anh, HeadlessReplayWriter xml.gz",
+  "traces_path": "/workspace/gemp-swccg-trainer/runs/_sample/wc96-replay/game-0001.jsonl",
+  "replay_dir": "/workspace/gemp-swccg-trainer/runs/_sample/wc96-replay",
+  "replay_files": {
+    "~OzzelBot": "/workspace/gemp-swccg-trainer/runs/_sample/wc96-replay/~OzzelBot/z2lvxyskmomnws1c.xml.gz",
+    "~AckbarBot": "/workspace/gemp-swccg-trainer/runs/_sample/wc96-replay/~AckbarBot/m8pchsostwv5wq7g.xml.gz"
+  },
+  "recording_ids": {
+    "~OzzelBot": "z2lvxyskmomnws1c",
+    "~AckbarBot": "m8pchsostwv5wq7g"
+  },
+  "dark_deck": "P-ANH 1996 World Champion (Dark)",
+  "light_deck": "P-ANH 1996 World Champion (Light)",
+  "format": "premiere_anh",
+  "open_hint_dark": "game.html?replayId=~OzzelBot$z2lvxyskmomnws1c",
+  "open_hint_light": "game.html?replayId=~AckbarBot$m8pchsostwv5wq7g"
+}
