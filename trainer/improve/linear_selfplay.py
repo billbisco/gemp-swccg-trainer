@@ -6,24 +6,27 @@ the keyword mutate loop.
 
 Update rule
 -----------
-``LinearPolicyAi`` scores an action as
-``bias + dot(W, concat(packed[128], bagHash[bagHashDim], actionFeat[24]))``
-and plays the greedy argmax. ``packed`` and ``bagHash`` are state features:
-they are identical for every legal action, so their weights (and ``bias``,
-and action feature 23 which is the constant 1) cannot change the choice.
-Only action features 0..22 move the greedy policy.
+``LinearPolicyAi`` scores an action as bias, plus a direct dot of the last
+24 weights with that action's features, plus an interaction stored in the
+same ``W`` (length still 128 + bagHashDim + 24). Packed slot ``i`` contributes
+``W[i] * packed[i] * actionFeat[i % 23]``. Each bag-hash slot is paired the
+same way (``k % 23``). Feature 23 is the constant 1 and is not paired, so it
+still cannot change the choice. Bias cannot either. The gym policy stays
+greedy argmax. All-zero ``W`` still scores every action the same, so the
+gym anti-stall prior still applies only then.
 
 FEATURES traces include ``state.packed`` and ``chosen``, plus a capped option
-list, but not the action-feature matrix and not a per-decision advantage.
-When the logged options are complete enough to rebuild the candidate list
-(same action features as ``LinearPolicyAi.actionFeatures``, including Java
+list, but not the action-feature matrix, not bag-hash, and not a per-decision
+advantage. When the logged options are complete enough to rebuild the candidate
+list (same action features as ``LinearPolicyAi.actionFeatures``, including Java
 ``String.hashCode`` buckets), this step applies a softmax surrogate of
-REINFORCE on those action features, with the episode return (side win +
-clipped life-force differential) shared by every decision of that seat.
-The softmax is a training surrogate only. The gym policy stays greedy.
+REINFORCE on the direct action weights and on the packed interaction weights,
+with the episode return (side win + clipped life-force differential) shared
+by every decision of that seat. The softmax is a training surrogate only.
 
-That gradient is zero for packed, bag, bias, and the constant-ones feature.
-Those entries stay at their init (zeros, unless ``--init small-random``).
+Bag-hash values are not in the trace, so those interaction weights get a zero
+gradient and stay at their init. With ``packed`` all zeros the packed
+interaction gradient is also zero.
 
 If no decision can be aligned, the step falls back to an episode-level stub:
 it nudges pass / integerNorm / indexNorm by the side-split return gap.
@@ -61,6 +64,8 @@ AF_TEXT_BUCKETS = 16
 AF_BP_HASH = 19
 AF_BP_BUCKETS = 4
 AF_ONES = 23
+# Every action feature except the constant 1. Matches LinearPolicyAi.INTERACT_FEAT_DIM.
+INTERACT_FEAT_DIM = AF_ONES
 INTEGER_ENUM_CAP = 24
 
 DARK_PLAYER = "~OzzelBot"
@@ -75,18 +80,19 @@ MAIN = "com.gempukku.swccgo.ai.HeadlessBotVsBotBatch"
 REPO = Path("/workspace/gemp-swccg-trainer")
 
 LIMITATION = (
-    "Greedy linear.v1 adds packed[128] and bagHash to every legal action, so those "
-    "weights cannot change the action. This step updates action features 0..22 only, "
-    "via a softmax surrogate of REINFORCE (the deployed policy is still greedy argmax, "
-    "so this is not the gradient of the policy that plays). The same episode return "
-    "(win + clipped LF differential) is copied onto every aligned decision — there is "
-    "no per-decision advantage. Decisions whose option list is truncated or not "
-    "rebuildable are skipped. If none align, pass/integer/index are nudged by the "
-    "side-split return gap; that nudge is an arbitrary stub, not a learned tactic. "
-    "Not distilled from YodaBot/AdvancedAi. Not promoted."
+    "Each packed slot i is paired with only one action feature (i mod 23), not a "
+    "full bilinear map, and feature 23 (constant 1) is unpaired. Bag-hash is paired "
+    "the same way but FEATURES traces omit it, so those weights are not trained. "
+    "The update is a softmax surrogate of REINFORCE (the deployed policy is still "
+    "greedy argmax, so this is not the gradient of the policy that plays). The same "
+    "episode return (win + clipped LF differential) is copied onto every aligned "
+    "decision — there is no per-decision advantage. Decisions whose option list is "
+    "truncated or not rebuildable are skipped. If none align, pass/integer/index are "
+    "nudged by the side-split return gap; that nudge is an arbitrary stub, not a "
+    "learned tactic. Not distilled from YodaBot/AdvancedAi. Not promoted."
 )
 
-UPDATE_REINFORCE = "softmax-surrogate-reinforce-action-features"
+UPDATE_REINFORCE = "softmax-surrogate-reinforce-action-and-packed-interaction"
 UPDATE_STUB = "episode-return-stub-pass-integer-index"
 
 
@@ -202,8 +208,10 @@ def make_pack(init: str = "zeros", rng: random.Random | None = None) -> dict[str
     file to avoid the activate-0 livelock. ``tiebreak`` is the older hand-built
     near-zero pack: pass +0.05 and integerNorm +0.05 stored in W. Those non-zero
     entries disable the Java prior. ``small-random`` draws N(0, 0.01) on action
-    features 0..22 only. Packed, bag, bias, and the constant-ones feature stay 0
-    because they do not change argmax.
+    features 0..22 only. Packed and bag interaction weights, bias, and the
+    constant-ones feature stay 0 at init. Packed interaction is still trained
+    when a decision's packed vector is non-zero. Bag interaction is not, because
+    traces do not log bag-hash.
     """
     weights = [0.0] * W_LEN
     base = PACKED_DIM + BAG_HASH_DIM
@@ -269,21 +277,99 @@ def _softmax(scores: list[float], temperature: float = 1.0) -> list[float]:
     return [e / total for e in exps]
 
 
-def _action_slice_grad(feats: list[list[float]], chosen: int, weights: list[float]) -> list[float]:
-    """d log softmax(scores) / d actionFeat weights, at ``weights``.
+def score_of(
+    packed: list[float] | None,
+    bag: list[float] | None,
+    feat: list[float] | None,
+    weights: list[float],
+    bias: float = 0.0,
+) -> float:
+    """Match ``LinearPolicyAi.scoreOf`` (interaction, then direct action weights)."""
+    score = float(bias)
+    p = 0
+    packed = packed or []
+    bag = bag or []
+    feat = feat or []
 
-    Packed and bag dots are constant across actions, so they cancel. Scoring
-    with the action slice alone matches the full concatenated score.
+    def at(index: int) -> float:
+        if index < 0 or index >= len(feat):
+            return 0.0
+        return float(feat[index])
+
+    for i, value in enumerate(packed):
+        if p >= len(weights):
+            return score
+        score += float(weights[p]) * float(value) * at(i % INTERACT_FEAT_DIM)
+        p += 1
+    for i, value in enumerate(bag):
+        if p >= len(weights):
+            return score
+        score += float(weights[p]) * float(value) * at(i % INTERACT_FEAT_DIM)
+        p += 1
+    for value in feat:
+        if p >= len(weights):
+            return score
+        score += float(weights[p]) * float(value)
+        p += 1
+    return score
+
+
+def greedy_index(
+    packed: list[float] | None,
+    bag: list[float] | None,
+    feats: list[list[float]],
+    weights: list[float],
+    bias: float = 0.0,
+) -> int:
+    """Match ``LinearPolicyAi.greedyIndex``. Equal scores keep the earliest action."""
+    if not feats:
+        return -1
+    best = 0
+    best_score = float("-inf")
+    for a, feat in enumerate(feats):
+        score = score_of(packed, bag, feat, weights, bias)
+        if score > best_score:
+            best_score = score
+            best = a
+    return best
+
+
+def _reinforce_grad(
+    feats: list[list[float]],
+    packed: list[float],
+    bag: list[float],
+    chosen: int,
+    weights: list[float],
+) -> list[float]:
+    """d log softmax(scores) / d W, at ``weights``.
+
+    Direct feature 23 is the constant 1, so its gradient is identically 0.
+    Packed slot i multiplies action feature ``i % 23``. Bag slot k does the same.
     """
-    base = PACKED_DIM + BAG_HASH_DIM
-    scores = []
-    for feat in feats:
-        scores.append(sum(weights[base + j] * feat[j] for j in range(ACTION_FEAT_DIM)))
+    scores = [score_of(packed, bag, feat, weights) for feat in feats]
     pi = _softmax(scores, 1.0)
-    grad = [0.0] * ACTION_FEAT_DIM
-    for j in range(AF_ONES):  # AF_ONES is 1 on every action; gradient is identically 0
-        expected = sum(pi[b] * feats[b][j] for b in range(len(feats)))
-        grad[j] = feats[chosen][j] - expected
+    n = len(feats)
+    expected = [0.0] * ACTION_FEAT_DIM
+    for j in range(ACTION_FEAT_DIM):
+        expected[j] = sum(pi[b] * feats[b][j] for b in range(n))
+    grad = [0.0] * len(weights)
+    for i, value in enumerate(packed):
+        if i >= len(grad):
+            break
+        m = i % INTERACT_FEAT_DIM
+        grad[i] = float(value) * (feats[chosen][m] - expected[m])
+    bag_at = PACKED_DIM
+    for k, value in enumerate(bag):
+        idx = bag_at + k
+        if idx >= len(grad):
+            break
+        m = k % INTERACT_FEAT_DIM
+        grad[idx] = float(value) * (feats[chosen][m] - expected[m])
+    base = PACKED_DIM + BAG_HASH_DIM
+    for j in range(AF_ONES):
+        if base + j >= len(grad):
+            break
+        grad[base + j] = feats[chosen][j] - expected[j]
     return grad
 
 
@@ -467,8 +553,10 @@ def _match_chosen(cands: list[dict[str, Any]], chosen: Any) -> int | None:
     return None
 
 
-def aligned_decisions(step: dict[str, Any]) -> tuple[list[list[float]], int] | None:
-    """Action-feature matrix and chosen index, or None if this step cannot train."""
+def aligned_decisions(
+    step: dict[str, Any],
+) -> tuple[list[list[float]], list[float], list[float], int] | None:
+    """Action features, packed, bag-hash, chosen index. None if this step cannot train."""
     if step.get("accepted") is False:
         return None
     if str(step.get("aiSkill") or "") != "LINEAR":
@@ -485,7 +573,27 @@ def aligned_decisions(step: dict[str, Any]) -> tuple[list[list[float]], int] | N
         action_features(c["text"], c["blueprint"], c["passed"], c["integer_norm"], c["index_norm"])
         for c in cands
     ]
-    return feats, chosen
+    state = step.get("state") if isinstance(step.get("state"), dict) else {}
+    packed = [float(x) for x in state["packed"]]
+    bag = _bag_hash_of(state)
+    return feats, packed, bag, chosen
+
+
+def _bag_hash_of(state: dict[str, Any]) -> list[float]:
+    """Bag-hash is not logged on FEATURES traces. Missing -> zeros (no gradient)."""
+    raw = state.get("bagHash")
+    if not isinstance(raw, list):
+        return [0.0] * BAG_HASH_DIM
+    out: list[float] = []
+    for i in range(BAG_HASH_DIM):
+        if i >= len(raw):
+            out.append(0.0)
+            continue
+        try:
+            out.append(float(raw[i]))
+        except (TypeError, ValueError):
+            out.append(0.0)
+    return out
 
 
 def seat_return(side: str, outcome: dict[str, Any]) -> tuple[float, float | None, float]:
@@ -538,7 +646,7 @@ def update_from_games(
     decisions_used = 0
     decisions_seen = 0
     decisions_skipped = 0
-    delta = [0.0] * ACTION_FEAT_DIM
+    delta = [0.0] * W_LEN
     dark_rewards: list[float] = []
     light_rewards: list[float] = []
     dark_lf: list[float] = []
@@ -579,29 +687,31 @@ def update_from_games(
                 if aligned is None:
                     decisions_skipped += 1
                     continue
-                feats, chosen = aligned
-                grads.append(_action_slice_grad(feats, chosen, weights))
+                feats, packed, bag, chosen = aligned
+                grads.append(_reinforce_grad(feats, packed, bag, chosen, weights))
             if not grads:
                 continue
             seat_games += 1
             decisions_used += len(grads)
-            mean = [0.0] * ACTION_FEAT_DIM
+            mean = [0.0] * W_LEN
             for g in grads:
-                for j in range(ACTION_FEAT_DIM):
+                for j in range(W_LEN):
                     mean[j] += g[j] / len(grads)
-            for j in range(AF_ONES):
+            for j in range(W_LEN):
                 delta[j] += reward * mean[j]
 
     rule = UPDATE_STUB
     if seat_games:
         rule = UPDATE_REINFORCE
         base = PACKED_DIM + BAG_HASH_DIM
-        for j in range(AF_ONES):
-            weights[base + j] += lr * (delta[j] / seat_games)
-            if weights[base + j] > WEIGHT_CLIP:
-                weights[base + j] = WEIGHT_CLIP
-            elif weights[base + j] < -WEIGHT_CLIP:
-                weights[base + j] = -WEIGHT_CLIP
+        for j in range(W_LEN):
+            if j == base + AF_ONES:
+                continue
+            weights[j] += lr * (delta[j] / seat_games)
+            if weights[j] > WEIGHT_CLIP:
+                weights[j] = WEIGHT_CLIP
+            elif weights[j] < -WEIGHT_CLIP:
+                weights[j] = -WEIGHT_CLIP
     else:
         # Episode stub. Signs are probes, not tactics. See LIMITATION.
         dark_m = sum(dark_rewards) / len(dark_rewards) if dark_rewards else 0.0

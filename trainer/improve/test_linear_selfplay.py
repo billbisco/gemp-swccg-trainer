@@ -6,17 +6,21 @@ import unittest
 from pathlib import Path
 
 from trainer.improve.linear_selfplay import (
+    ACTION_FEAT_DIM,
     AF_INDEX,
     AF_INTEGER,
     AF_ONES,
     AF_PASS,
     BAG_HASH_DIM,
+    DARK_PLAYER,
+    INTERACT_FEAT_DIM,
     PACKED_DIM,
     UPDATE_REINFORCE,
     UPDATE_STUB,
     W_LEN,
     action_features,
     bucket,
+    greedy_index,
     integer_samples,
     java_string_hash,
     make_pack,
@@ -101,6 +105,77 @@ class LinearSelfPlayTest(unittest.TestCase):
             else:
                 self.assertEqual(weights[base + j], 0.0)
         self.assertTrue(all(v == 0.0 for v in weights[:base]))
+
+    def test_score_interaction_flips_argmax(self) -> None:
+        bit = 0  # pairs with packed slot 0
+        feat_a = [0.0] * ACTION_FEAT_DIM
+        feat_b = [0.0] * ACTION_FEAT_DIM
+        feat_a[bit] = 1.0
+        feat_a[AF_ONES] = 1.0
+        feat_b[AF_ONES] = 1.0
+        feats = [feat_a, feat_b]
+        weights = [0.0] * W_LEN
+        weights[bit] = 1.0
+        p1 = [0.0] * PACKED_DIM
+        p2 = [0.0] * PACKED_DIM
+        p1[bit] = 1.0
+        p2[bit] = -1.0
+        bag = [0.0] * BAG_HASH_DIM
+        self.assertEqual(greedy_index(p1, bag, feats, weights), 0)
+        self.assertEqual(greedy_index(p2, bag, feats, weights), 1)
+        direct = [0.0] * W_LEN
+        direct[PACKED_DIM + BAG_HASH_DIM + bit] = 1.0
+        self.assertEqual(greedy_index(p1, bag, feats, direct), 0)
+        self.assertEqual(greedy_index(p2, bag, feats, direct), 0)
+        self.assertEqual(INTERACT_FEAT_DIM, 23)
+
+    def test_reinforce_trains_packed_interaction(self) -> None:
+        # Fire vs Pass differs on the pass bit (feature 0) and index (feature 2).
+        # Those pair with packed slots 0 and 2. Other packed slots stay 0.
+        pack = make_pack("zeros")
+        packed = [0.0] * PACKED_DIM
+        packed[AF_PASS] = 1.0
+        packed[AF_INDEX] = 1.0
+        games = [
+            {
+                "steps": [
+                    {
+                        "type": "step",
+                        "side": "DARK",
+                        "playerId": "~OzzelBot",
+                        "aiSkill": "LINEAR",
+                        "accepted": True,
+                        "decisionType": "MULTIPLE_CHOICE",
+                        "chosen": "0",
+                        "optionCount": 2,
+                        "options": {"items": [{"text": "Fire laser"}, {"text": "Pass"}]},
+                        "state": {"packed": packed, "schemaVersion": 1},
+                    }
+                ],
+                "outcome": {
+                    "winner": DARK_PLAYER,
+                    "finished": True,
+                    "darkLifeForce": 30,
+                    "lightLifeForce": 0,
+                },
+            }
+        ]
+        report = update_from_games(pack, games, lr=0.1)
+        self.assertEqual(report["updateRule"], UPDATE_REINFORCE)
+        weights = pack["W"]
+        self.assertNotEqual(weights[AF_PASS], 0.0)
+        self.assertNotEqual(weights[AF_INDEX], 0.0)
+        for i in range(PACKED_DIM):
+            if i in (AF_PASS, AF_INDEX):
+                continue
+            self.assertEqual(weights[i], 0.0)
+        base = PACKED_DIM + BAG_HASH_DIM
+        self.assertEqual(weights[base + AF_ONES], 0.0)
+        self.assertTrue(all(v == 0.0 for v in weights[PACKED_DIM:base]))
+        # The learned packed weights prefer Fire under this packed vector.
+        fire = action_features("Fire laser", "", False, 0.0, 0.0)
+        passed = action_features("Pass", "", True, 0.0, 1.0)
+        self.assertEqual(greedy_index(packed, [0.0] * BAG_HASH_DIM, [fire, passed], weights), 0)
 
     def test_write_roundtrip(self) -> None:
         pack = make_pack("zeros")
