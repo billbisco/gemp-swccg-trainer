@@ -3,7 +3,7 @@
 Local self-play **collect + watch** UI for Star Wars CCG bots on GEMP.
 
 > **Day-1 scope:** Start / Pause / Watch last game / Export champ stub.  
-> **Learning does NOT happen yet** — the improve stage is later. This UI orchestrates game collection and lets you inspect JSONL decision timelines offline.
+> The UI still collects games. Keyword mutate stays a baseline. The first **linear.v1** self-play step is `trainer.improve.linear_selfplay` (candidate only — it does not promote).
 
 Companion to [`swccg-gemp`](https://github.com/billbisco/swccg-gemp) thin gym (`feature/headless-bot-vs-bot`). Architecture: see `/workspace/docs/swccg-bot-trainer-architecture.md` (local) / project docs.
 
@@ -11,7 +11,7 @@ Companion to [`swccg-gemp`](https://github.com/billbisco/swccg-gemp) thin gym (`
 
 Ratified design: [`docs/design-learned-policy-v1.md`](docs/design-learned-policy-v1.md) (2026-10-02).
 
-AckbarBot's next strategy is a hybrid information set (`float32[128]` packed summary + sparse bags), self-play, and side-split win rate plus Life Force differential. Keyword mutate/blend (`heuristic.v1`) stays the baseline backend. It is not the training path for this design, and **no learned pack has been trained or promoted**.
+AckbarBot's next strategy is a hybrid information set (`float32[128]` packed summary + sparse bags), self-play, and side-split win rate plus Life Force differential. Keyword mutate/blend (`heuristic.v1`) stays the baseline backend. It is not the training path for this design. **No learned pack has been promoted.** The first self-play step writes a candidate under `runs/linear-selfplay/` and stops there.
 
 Schema stubs (contracts only):
 
@@ -19,9 +19,26 @@ Schema stubs (contracts only):
 - `schemas/feature_layout_v1.json` — frozen 128-d layout, `seenHistoryCap` 64
 - `schemas/experience.v1.schema.json` — step / episode lines; episode requires both final LFs
 - `schemas/soft-metagame-belief.v1.schema.json` — separate soft belief store; must not be seeded from the exact opposing list
-- `schemas/linear.v1.weights.schema.json` — gym-cli `LinearPolicyAi` pack (`W` over packed 128 + optional bag hash + actionFeat 24). Not a training loop. Not for Hall.
+- `schemas/linear.v1.weights.schema.json` — gym-cli `LinearPolicyAi` pack (`W` over packed 128 + optional bag hash + actionFeat 24). Not for Hall.
 
-Gym slice (not wired into live traces yet) is `com.gempukku.swccgo.ai.features` on `swccg-gemp`.
+### Run the first linear self-play step
+
+Does not promote, does not set a shuffle seed, and does not start the keyword loop.
+
+```bash
+cd /workspace/gemp-swccg-trainer
+PYTHONPATH=. python3 -m trainer.improve.linear_selfplay --dry-run
+# 2 games as Dark and 2 as Light vs Beginner (default init is tiebreak):
+PYTHONPATH=. python3 -m trainer.improve.linear_selfplay --live --games 2 --opponent BEGINNER --both-seats-vs-beginner
+```
+
+`--dry-run` fits the update on synthetic outcomes (no JVM). `--live` plays WC96 headless `LINEAR` vs `BEGINNER` (or `LINEAR`, which does not finish: tiebreak passes every phase and the game hits maxDecisions with life force unchanged) and reads FEATURES traces. Output: `runs/linear-selfplay/<stamp>/candidate.linear.json` plus win rate and mean life-force differential. `--gate` can measure N=2 vs Beginner and still does not copy into `champs/`.
+
+Default `--init tiebreak` sets pass and integerNorm to +0.05 (everything else 0). An all-zero pack is legal but livelocks on WC96 Activate: ties keep the first candidate, which is Activate 0 Force, forever. `--init zeros` and `--init small-random` are also available. Gym shuffle seeds are not set.
+
+Honest limit: greedy `linear.v1` adds `packed[128]` to every action, so those weights cannot change the choice. The update is a softmax surrogate of REINFORCE on action features 0..22, with one episode return (win + clipped LF diff) shared by every aligned decision. If options cannot be rebuilt, it nudges pass / integer / index from the side-split return — a stub, not a tactic.
+
+Gym FEATURES traces (`-Dheadless.traceLevel=FEATURES`) already embed `state.packed`. This step does not change the gym.
 
 
 ## Quick start
