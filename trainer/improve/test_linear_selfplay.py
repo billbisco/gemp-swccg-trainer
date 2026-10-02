@@ -172,10 +172,67 @@ class LinearSelfPlayTest(unittest.TestCase):
         base = PACKED_DIM + BAG_HASH_DIM
         self.assertEqual(weights[base + AF_ONES], 0.0)
         self.assertTrue(all(v == 0.0 for v in weights[PACKED_DIM:base]))
+        self.assertEqual(report["decisionsWithBagHash"], 0)
+        self.assertEqual(report["bagWeightsNonzero"], 0)
         # The learned packed weights prefer Fire under this packed vector.
         fire = action_features("Fire laser", "", False, 0.0, 0.0)
         passed = action_features("Pass", "", True, 0.0, 1.0)
         self.assertEqual(greedy_index(packed, [0.0] * BAG_HASH_DIM, [fire, passed], weights), 0)
+
+    def test_reinforce_trains_bag_hash_interaction(self) -> None:
+        # Fire vs Pass differs on pass (feature 0) and index (feature 2).
+        # Those pair with bag slots 0 and 2. Other bag slots stay 0.
+        pack = make_pack("zeros")
+        bag = [0.0] * BAG_HASH_DIM
+        bag[AF_PASS] = 1.0
+        bag[AF_INDEX] = 0.5
+        games = [
+            {
+                "steps": [
+                    {
+                        "type": "step",
+                        "side": "DARK",
+                        "playerId": "~OzzelBot",
+                        "aiSkill": "LINEAR",
+                        "accepted": True,
+                        "decisionType": "MULTIPLE_CHOICE",
+                        "chosen": "0",
+                        "optionCount": 2,
+                        "options": {"items": [{"text": "Fire laser"}, {"text": "Pass"}]},
+                        "state": {
+                            "packed": [0.0] * PACKED_DIM,
+                            "bagHash": bag,
+                            "schemaVersion": 1,
+                        },
+                    }
+                ],
+                "outcome": {
+                    "winner": DARK_PLAYER,
+                    "finished": True,
+                    "darkLifeForce": 30,
+                    "lightLifeForce": 0,
+                },
+            }
+        ]
+        report = update_from_games(pack, games, lr=0.1)
+        self.assertEqual(report["updateRule"], UPDATE_REINFORCE)
+        self.assertEqual(report["decisionsWithBagHash"], 1)
+        weights = pack["W"]
+        self.assertNotEqual(weights[PACKED_DIM + AF_PASS], 0.0)
+        self.assertNotEqual(weights[PACKED_DIM + AF_INDEX], 0.0)
+        for k in range(BAG_HASH_DIM):
+            if k in (AF_PASS, AF_INDEX):
+                continue
+            self.assertEqual(weights[PACKED_DIM + k], 0.0)
+        self.assertEqual(report["bagWeightsNonzero"], 2)
+        self.assertGreater(report["bagWeightL1"], 0.0)
+        self.assertTrue(all(v == 0.0 for v in weights[:PACKED_DIM]))
+        fire = action_features("Fire laser", "", False, 0.0, 0.0)
+        passed = action_features("Pass", "", True, 0.0, 1.0)
+        self.assertEqual(
+            greedy_index([0.0] * PACKED_DIM, bag, [fire, passed], weights),
+            0,
+        )
 
     def test_write_roundtrip(self) -> None:
         pack = make_pack("zeros")

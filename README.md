@@ -36,9 +36,9 @@ PYTHONPATH=. python3 -m trainer.improve.linear_selfplay --live --games 2 --oppon
 
 Default `--init tiebreak` sets pass and integerNorm to +0.05 (everything else 0). An all-zero pack is legal: the gym adds its anti-stall prior only while `W` is all zeros, so Activate 0 is not chosen. Any non-zero weight disables that prior. `--init zeros` and `--init small-random` are also available. Gym shuffle seeds are not set.
 
-Honest limit: each packed slot `i` is paired with only one action feature (`i mod 23`), not a full state×action matrix, and the constant-1 feature is unpaired. Bag-hash is paired the same way but FEATURES traces omit it, so those weights are not trained. The update is a softmax surrogate of REINFORCE on the direct action weights and the packed interaction, with one episode return (win + clipped LF diff) shared by every aligned decision. If options cannot be rebuilt, it nudges pass / integer / index from the side-split return — a stub, not a tactic.
+Honest limit: each packed slot `i` is paired with only one action feature (`i mod 23`), not a full state×action matrix, and the constant-1 feature is unpaired. Bag-hash slots are paired the same way. FEATURES traces log `state.bagHash` (the 16-d `LinearPolicyAi.bagHash`), and the update trains those interaction weights too. A missing hash is zeros, so old traces do not move that slice. The update is a softmax surrogate of REINFORCE on the direct action weights and the packed and bag interactions, with one episode return (win + clipped LF diff) shared by every aligned decision. If options cannot be rebuilt, it nudges pass / integer / index from the side-split return — a stub, not a tactic.
 
-Gym FEATURES traces (`-Dheadless.traceLevel=FEATURES`) already embed `state.packed`. The gym `LinearPolicyAi` is what multiplies those values by an action feature.
+Gym FEATURES traces (`-Dheadless.traceLevel=FEATURES`) embed `state.packed` and `state.bagHash`. The gym `LinearPolicyAi` multiplies each of those values by one action feature.
 
 
 ## Quick start

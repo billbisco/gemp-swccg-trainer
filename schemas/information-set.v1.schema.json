@@ -205,6 +205,15 @@
       },
       "description": "float32[128] summary. Bags are not flattened into this array."
     },
+    "bagHash": {
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 16,
+      "items": {
+        "type": "number"
+      },
+      "description": "16-d hash matching LinearPolicyAi.bagHash(set, 16). Counts blueprintId (else title) from ownHand, publicInPlay, ownPublicPiles, opponentRevealed, and seenHistory, then divides by the max bucket. Not destinyRecycleAggregate and not a decklist."
+    },
     "softMetagameBeliefRef": {
       "type": [
         "string",

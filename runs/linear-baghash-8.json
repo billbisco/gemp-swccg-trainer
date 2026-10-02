@@ -1,0 +1,38 @@
+{
+  "label": "linear-baghash-8",
+  "when": "2026-10-02T19:16 PT",
+  "gym": "feature/informationset-v1-slice",
+  "init": "zeros",
+  "opponent": "BEGINNER",
+  "bothSeats": true,
+  "shuffle": "random",
+  "promoted": false,
+  "gamesRequested": 8,
+  "gamesFinished": 7,
+  "errors": 1,
+  "errorNote": "LINEAR as Dark game 1 stopped at maxDecisions=4000 (LF dark 2, light 17). Not a finish.",
+  "linearSeat": {
+    "games": 7,
+    "wins": 5,
+    "winRate": 0.7142857142857143,
+    "meanLfDiff": 7.857142857142857
+  },
+  "asDark": {
+    "games": 3,
+    "wins": 1,
+    "winRate": 0.3333333333333333,
+    "meanLfDiff": -13.333333333333334
+  },
+  "asLight": {
+    "games": 4,
+    "wins": 4,
+    "winRate": 1.0,
+    "meanLfDiff": 23.75
+  },
+  "updateRule": "softmax-surrogate-reinforce-action-packed-and-bag-interaction",
+  "decisionsUsed": 1531,
+  "decisionsWithBagHash": 1524,
+  "bagWeightsNonzero": 16,
+  "bagWeightL1": 0.024314204035956192,
+  "wallMs": 102186
+}

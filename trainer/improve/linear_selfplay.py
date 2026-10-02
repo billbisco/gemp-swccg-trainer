@@ -15,18 +15,19 @@ still cannot change the choice. Bias cannot either. The gym policy stays
 greedy argmax. All-zero ``W`` still scores every action the same, so the
 gym anti-stall prior still applies only then.
 
-FEATURES traces include ``state.packed`` and ``chosen``, plus a capped option
-list, but not the action-feature matrix, not bag-hash, and not a per-decision
-advantage. When the logged options are complete enough to rebuild the candidate
-list (same action features as ``LinearPolicyAi.actionFeatures``, including Java
+FEATURES traces include ``state.packed``, ``state.bagHash`` (the 16-d
+vector ``LinearPolicyAi.bagHash`` writes), and ``chosen``, plus a capped option
+list, but not the action-feature matrix and not a per-decision advantage.
+When the logged options are complete enough to rebuild the candidate list
+(same action features as ``LinearPolicyAi.actionFeatures``, including Java
 ``String.hashCode`` buckets), this step applies a softmax surrogate of
-REINFORCE on the direct action weights and on the packed interaction weights,
-with the episode return (side win + clipped life-force differential) shared
-by every decision of that seat. The softmax is a training surrogate only.
+REINFORCE on the direct action weights and on the packed and bag-hash
+interaction weights, with the episode return (side win + clipped life-force
+differential) shared by every decision of that seat. The softmax is a
+training surrogate only.
 
-Bag-hash values are not in the trace, so those interaction weights get a zero
-gradient and stay at their init. With ``packed`` all zeros the packed
-interaction gradient is also zero.
+A missing ``bagHash`` is treated as zeros, so those weights do not move.
+With ``packed`` or ``bagHash`` all zeros that interaction gradient is also zero.
 
 If no decision can be aligned, the step falls back to an episode-level stub:
 it nudges pass / integerNorm / indexNorm by the side-split return gap.
@@ -82,7 +83,8 @@ REPO = Path("/workspace/gemp-swccg-trainer")
 LIMITATION = (
     "Each packed slot i is paired with only one action feature (i mod 23), not a "
     "full bilinear map, and feature 23 (constant 1) is unpaired. Bag-hash is paired "
-    "the same way but FEATURES traces omit it, so those weights are not trained. "
+    "the same way. FEATURES traces log state.bagHash (LinearPolicyAi.bagHash, "
+    "16-d); a missing field is zeros and those weights stay put. "
     "The update is a softmax surrogate of REINFORCE (the deployed policy is still "
     "greedy argmax, so this is not the gradient of the policy that plays). The same "
     "episode return (win + clipped LF differential) is copied onto every aligned "
@@ -92,7 +94,7 @@ LIMITATION = (
     "learned tactic. Not distilled from YodaBot/AdvancedAi. Not promoted."
 )
 
-UPDATE_REINFORCE = "softmax-surrogate-reinforce-action-and-packed-interaction"
+UPDATE_REINFORCE = "softmax-surrogate-reinforce-action-packed-and-bag-interaction"
 UPDATE_STUB = "episode-return-stub-pass-integer-index"
 
 
@@ -210,8 +212,8 @@ def make_pack(init: str = "zeros", rng: random.Random | None = None) -> dict[str
     entries disable the Java prior. ``small-random`` draws N(0, 0.01) on action
     features 0..22 only. Packed and bag interaction weights, bias, and the
     constant-ones feature stay 0 at init. Packed interaction is still trained
-    when a decision's packed vector is non-zero. Bag interaction is not, because
-    traces do not log bag-hash.
+    when a decision's packed vector is non-zero. Bag interaction is trained when
+    ``state.bagHash`` is present and non-zero (the 16-d LinearPolicyAi hash).
     """
     weights = [0.0] * W_LEN
     base = PACKED_DIM + BAG_HASH_DIM
@@ -580,7 +582,10 @@ def aligned_decisions(
 
 
 def _bag_hash_of(state: dict[str, Any]) -> list[float]:
-    """Bag-hash is not logged on FEATURES traces. Missing -> zeros (no gradient)."""
+    """``state.bagHash`` from FEATURES traces (LinearPolicyAi.bagHash, 16-d).
+
+    Missing or non-numeric -> zeros, so those interaction weights get no gradient.
+    """
     raw = state.get("bagHash")
     if not isinstance(raw, list):
         return [0.0] * BAG_HASH_DIM
@@ -646,6 +651,7 @@ def update_from_games(
     decisions_used = 0
     decisions_seen = 0
     decisions_skipped = 0
+    decisions_with_bag = 0
     delta = [0.0] * W_LEN
     dark_rewards: list[float] = []
     light_rewards: list[float] = []
@@ -688,6 +694,8 @@ def update_from_games(
                     decisions_skipped += 1
                     continue
                 feats, packed, bag, chosen = aligned
+                if any(v != 0.0 for v in bag):
+                    decisions_with_bag += 1
                 grads.append(_reinforce_grad(feats, packed, bag, chosen, weights))
             if not grads:
                 continue
@@ -742,6 +750,9 @@ def update_from_games(
         "meanLightLfDiff": (sum(light_lf) / len(light_lf)) if light_lf else None,
         "lr": lr,
         "promoted": False,
+        "decisionsWithBagHash": decisions_with_bag,
+        "bagWeightsNonzero": sum(1 for v in weights[PACKED_DIM:PACKED_DIM + BAG_HASH_DIM] if v != 0.0),
+        "bagWeightL1": sum(abs(v) for v in weights[PACKED_DIM:PACKED_DIM + BAG_HASH_DIM]),
     }
 
 
@@ -1026,6 +1037,11 @@ def _print_report(report: dict[str, Any]) -> None:
         print(f"  as Dark: {cand.get('asDark')}")
         print(f"  as Light: {cand.get('asLight')}")
     print(f"  decisions used/skipped: {report.get('decisionsUsed')}/{report.get('decisionsSkipped')}")
+    print(
+        f"  bag-hash decisions: {report.get('decisionsWithBagHash')}  "
+        f"bag weights moved: {report.get('bagWeightsNonzero')}  "
+        f"bag L1: {report.get('bagWeightL1')}"
+    )
     if report.get("liveError"):
         print(f"  live error: {report.get('liveError')}")
     if report.get("gate"):
