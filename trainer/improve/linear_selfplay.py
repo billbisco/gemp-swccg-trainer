@@ -196,12 +196,14 @@ def make_pack(init: str = "zeros", rng: random.Random | None = None) -> dict[str
     """JSON object ``LinearPolicyAi.fromJson`` accepts.
 
     ``zeros`` matches ``LinearPolicyAi.zeros()`` (bagHashDim 16, bias 0, W all 0).
-    All-zero W ties every action and keeps the earliest candidate. On WC96 that
-    earliest Activate answer is 0 Force, then "Activate Force" again, so a zeros
-    pack livelocks and never finishes. ``tiebreak`` is still a near-zero pack:
-    pass +0.05 and integerNorm +0.05, everything else 0, so Activate can end.
-    ``small-random`` draws N(0, 0.01) on action features 0..22 only. Packed, bag,
-    bias, and the constant-ones feature stay 0 because they do not change argmax.
+    Default gym LINEAR applies its own anti-stall prior when W is all zeros or
+    omitted (real actions 0, non-zero integer up to +0.05, pass -0.05, activate-0
+    / zero-integer -0.10), so a zeros pack no longer needs an external tiebreak
+    file to avoid the activate-0 livelock. ``tiebreak`` is the older hand-built
+    near-zero pack: pass +0.05 and integerNorm +0.05 stored in W. Those non-zero
+    entries disable the Java prior. ``small-random`` draws N(0, 0.01) on action
+    features 0..22 only. Packed, bag, bias, and the constant-ones feature stay 0
+    because they do not change argmax.
     """
     weights = [0.0] * W_LEN
     base = PACKED_DIM + BAG_HASH_DIM
@@ -932,7 +934,7 @@ def run(argv: list[str] | None = None) -> dict[str, Any]:
     parser.add_argument("--both-seats-vs-beginner", action="store_true",
                         help="with BEGINNER, also run the pack as Light (doubles games)")
     parser.add_argument("--init", choices=("zeros", "small-random", "tiebreak"), default="tiebreak",
-                        help="zeros livelocks on WC96 Activate; tiebreak is pass/integer +0.05")
+                        help="zeros uses the gym anti-stall prior (no external tiebreak file); tiebreak bakes pass/integer +0.05 into W")
     parser.add_argument("--lr", type=float, default=0.1)
     parser.add_argument("--live", action="store_true", help="run headless gym games (random shuffle, no seed)")
     parser.add_argument("--dry-run", action="store_true", help="synthetic outcomes only; no JVM")
