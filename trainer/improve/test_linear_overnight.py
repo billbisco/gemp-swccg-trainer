@@ -10,6 +10,8 @@ from trainer.improve.linear_overnight import (
     PROMOTION_RULE,
     assert_safe_out_dir,
     measure_seat_csv,
+    next_round_index,
+    run_limits,
     seat_not_worse,
     select_finished,
     should_promote,
@@ -175,3 +177,20 @@ class HeadToHeadGateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LoopBoundTest(unittest.TestCase):
+    def test_zero_rounds_and_hours_do_not_stop(self) -> None:
+        last, hours = run_limits(0, 0.0)
+        self.assertIsNone(last)
+        self.assertIsNone(hours)
+        last, hours = run_limits(0, -1.0)
+        self.assertIsNone(last)
+        self.assertIsNone(hours)
+
+    def test_positive_caps_still_parse(self) -> None:
+        self.assertEqual(run_limits(40, 8.0), (40, 8.0))
+
+    def test_resume_skips_existing_round_dirs(self) -> None:
+        self.assertEqual(next_round_index(0, list(range(1, 41))), 41)
+        self.assertEqual(next_round_index(7, []), 8)

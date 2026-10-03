@@ -76,6 +76,28 @@ def log(msg: str) -> None:
     print(f"[{stamp}] {msg}", flush=True)
 
 
+def run_limits(rounds: int, hours: float) -> tuple[int | None, float | None]:
+    """Stop bounds. None means that stop is off (run until the process is killed).
+
+    ``rounds == 0`` does not stop after a round count. ``hours <= 0`` does not
+    stop after a wall-clock budget. Per-game maxDecisions / maxMillis are not
+    these bounds.
+    """
+    if rounds < 0:
+        raise ValueError("rounds must be >= 0 (0 = until killed)")
+    last_round = None if rounds == 0 else rounds
+    hour_cap = None if hours <= 0 else hours
+    return last_round, hour_cap
+
+
+def next_round_index(kept_round: int, existing: list[int]) -> int:
+    """Resume after the kept pointer and after any round directory already on disk."""
+    start = int(kept_round or 0) + 1
+    if existing:
+        start = max(start, max(existing) + 1)
+    return start
+
+
 def assert_safe_out_dir(out_dir: Path) -> Path:
     resolved = out_dir.resolve()
     champs = CHAMPS.resolve()
@@ -224,7 +246,7 @@ def play_batch(
     dark_w = dark_weights or weights
     light_w = light_weights or weights
     same = dark_w.resolve() == light_w.resolve()
-    wdesc = dark_w.name if same else f"dark={dark_w.name} light={light_w.name}"
+    wdesc = str(dark_w.resolve()) if same else f"dark={dark_w.resolve()} light={light_w.resolve()}"
     log(
         f"play {label} games={games} dark={dark} light={light} "
         f"decks=wc96 format=premiere_anh maxDecisions={max_decisions} "
@@ -454,8 +476,15 @@ def one_round(
     round_dir = out_dir / "rounds" / f"r{rnd:03d}"
     round_dir.mkdir(parents=True, exist_ok=True)
     champ_path = out_dir / "current.linear.json"
+    # Snapshot only. The JVM and the update both start from the kept pack
+    # itself (current.linear.json), not from a zeros reinit and not from a
+    # file whose name is init.linear.json.
     init_path = round_dir / "init.linear.json"
     write_pack(init_path, load_pack(champ_path))
+    log(
+        f"round {rnd}: self-play loads kept pack {champ_path.resolve()} "
+        f"(not a zeros reinit; {init_path.name} is only a snapshot)"
+    )
     min_games = max(1, args.gate_per_seat // 2)
     report: dict[str, Any] = {
         "round": rnd,
@@ -464,7 +493,7 @@ def one_round(
     }
     finished, played, batches = collect_finished(
         classpath=classpath,
-        weights=init_path,
+        weights=champ_path,
         out_dir=round_dir,
         games=args.games,
         max_millis=args.max_millis,
@@ -480,7 +509,7 @@ def one_round(
         _write_json(round_dir / "report.json", report)
         return report
 
-    pack = load_pack(init_path)
+    pack = load_pack(champ_path)
     stats = update_from_games(pack, finished, args.lr)
     pack["trainer"] = {
         "name": "linear_overnight",
@@ -549,8 +578,8 @@ def one_round(
 
 def run(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Unattended LINEAR vs LINEAR overnight loop. Does not promote into champs/.")
-    parser.add_argument("--rounds", type=int, default=40)
-    parser.add_argument("--hours", type=float, default=8.0)
+    parser.add_argument("--rounds", type=int, default=0, help="0 = run until killed (no round cap)")
+    parser.add_argument("--hours", type=float, default=0.0, help="<=0 = no hour cap")
     parser.add_argument("--games", type=int, default=8, help="finished LINEAR vs LINEAR games per round")
     parser.add_argument("--max-batches", type=int, default=2, help="self-play batches per round if games do not finish")
     parser.add_argument("--gate-per-seat", type=int, default=4)
@@ -563,8 +592,8 @@ def run(argv: list[str] | None = None) -> None:
     parser.add_argument("--fresh", action="store_true", help="ignore an existing CURRENT.json and start at the baseline")
     args = parser.parse_args(argv)
 
-    if args.rounds < 1 or args.games < 1 or args.gate_per_seat < 1:
-        parser.error("rounds, games, and gate-per-seat must be >= 1")
+    if args.rounds < 0 or args.games < 1 or args.gate_per_seat < 1:
+        parser.error("rounds must be >= 0 (0 = until killed); games and gate-per-seat must be >= 1")
     if args.max_decisions < 1 or args.max_millis < 1:
         parser.error("caps must be >= 1")
 
@@ -577,9 +606,11 @@ def run(argv: list[str] | None = None) -> None:
         log("no gym classpath")
         raise SystemExit(1)
 
-    deadline = time.time() + args.hours * 3600.0
+    last_round, hour_cap = run_limits(args.rounds, args.hours)
+    deadline = None if hour_cap is None else time.time() + hour_cap * 3600.0
     log(
-        f"start rounds={args.rounds} hours={args.hours} games={args.games} "
+        f"start rounds={'until-killed' if last_round is None else last_round} "
+        f"hours={'none' if deadline is None else hour_cap} games={args.games} "
         f"gatePerSeat={args.gate_per_seat} maxDecisions={args.max_decisions} "
         f"init={args.init} pid={os.getpid()} out={out_dir}"
     )
@@ -598,7 +629,14 @@ def run(argv: list[str] | None = None) -> None:
             kept = run_baseline(args, classpath, out_dir)
             start_round = 1
         else:
-            start_round = int(kept.get("round") or 0) + 1
+            existing: list[int] = []
+            rounds_root = out_dir / "rounds"
+            if rounds_root.is_dir():
+                for child in rounds_root.iterdir():
+                    name = child.name
+                    if child.is_dir() and name.startswith("r") and name[1:].isdigit():
+                        existing.append(int(name[1:]))
+            start_round = next_round_index(int(kept.get("round") or 0), existing)
             log(
                 f"resume from round {kept.get('round')} role={kept.get('role')} "
                 f"next={start_round} status={status} weights=current.linear.json "
@@ -606,8 +644,12 @@ def run(argv: list[str] | None = None) -> None:
             )
 
     consecutive_failures = 0
-    for rnd in range(start_round, args.rounds + 1):
-        if time.time() >= deadline:
+    rnd = start_round
+    while True:
+        if last_round is not None and rnd > last_round:
+            log(f"stop: completed {last_round} rounds")
+            break
+        if deadline is not None and time.time() >= deadline:
             log(f"stop: hour cap reached before round {rnd}")
             break
         try:
@@ -619,14 +661,12 @@ def run(argv: list[str] | None = None) -> None:
             if consecutive_failures >= 3:
                 log("stop: 3 consecutive round failures")
                 raise SystemExit(1)
+            rnd += 1
             continue
         consecutive_failures = 0
         if report.get("promoted"):
             kept = json.loads(current_path.read_text(encoding="utf-8"))
-    else:
-        log(f"stop: completed {args.rounds} rounds")
-    if time.time() >= deadline:
-        log("stop: hour cap")
+        rnd += 1
     log("loop exit")
 
 
