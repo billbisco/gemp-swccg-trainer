@@ -17,20 +17,16 @@ What it does not do
 
 Gate
 ----
-Opponent A is YodaBot: headless seat ``ADVANCED`` (AdvancedAi, HallServer
-``~YodaBot``). No weights file on that seat.
+The gate opponent is the previous kept linear pack (``current.linear.json``)
+on headless seat ``LINEAR``, both seats. Not the heuristic AckbarBot 1.0 pack,
+not YodaBot/``ADVANCED``, and not Beginner.
 
-Opponent B is the keyword AckbarBot pack
-``champs/_promoted/heuristic-v1-wc96-r08-blend-adv25`` on headless seat
-``HEURISTIC`` (ConfigurableHeuristicAi, that weights file).
-
-A candidate is kept only when it is not worse than the previous kept linear
-pack against both opponents, on both seats, on win rate and mean life-force
-differential. Equality counts as not worse. With no previous learned pack,
-the first keep must strictly beat both opponents (not a tie, and not a zeros
-self-play). Unfinished maxDecisions/maxMillis games do not count. At least
-2 finished games per seat per opponent. The pointer is
+A candidate is kept only when its mean life-force differential is not worse
+than that previous pack on both seats. Equality counts. Win rate is logged,
+not a bar. Unfinished maxDecisions/maxMillis games do not count. At least
+2 finished games per seat. The pointer is
 ``runs/linear-overnight/CURRENT.json`` plus ``current.linear.json``.
+A learned pack already on disk is not reset and is not re-seeded from Yoda.
 """
 from __future__ import annotations
 
@@ -65,15 +61,16 @@ from trainer.improve.linear_selfplay import (
 
 PROMOTION_RULE = (
     "Keep a candidate when its mean life-force differential is not worse than the "
-    "previous kept linear pack, on BOTH seats, against the keyword AckbarBot only "
-    "(headless seat HEURISTIC, champs/_promoted/heuristic-v1-wc96-r08-blend-adv25). "
+    "previous kept linear pack on BOTH seats. The gate opponent is that pack "
+    "(current.linear.json on headless seat LINEAR, both seats), not the heuristic "
+    "AckbarBot 1.0 pack, not YodaBot/ADVANCED, and not Beginner. "
     "Equality on life force counts as not worse. Win rate is logged, not a bar. "
-    "There is no YodaBot/ADVANCED gate. The zeros pack is not a gate opponent. "
-    "Beginner is never the bar. If there is no previous learned pack, the first "
-    "keep must have mean life-force differential > 0 on both seats versus the "
-    "keyword pack. Unfinished maxDecisions/maxMillis games do not count. At least "
+    "There is no YodaBot/ADVANCED gate and no HEURISTIC gate. "
+    "The zeros pack is not a gate opponent. Beginner is never the bar. "
+    "Unfinished maxDecisions/maxMillis games do not count. At least "
     "2 finished games per seat are required. Self-play is LINEAR vs LINEAR, WC96, "
-    "premiere_anh, no shuffle seed. Never writes champs/_promoted."
+    "premiere_anh, no shuffle seed. Never writes champs/_promoted. "
+    "Do not reset current.linear.json and do not re-seed from Yoda while a learned pack is kept."
 )
 
 # Even split against an opponent. The first keep must strictly beat this.
@@ -439,7 +436,7 @@ def install_start_pack(out_dir: Path, *, force_seed: bool = False) -> tuple[dict
             "are AdvancedAi action scores at scale 1.0 and choice-table features are "
             "AdvancedAi choice scores at scale 1.0. Grounded features stay 0. Not the "
             "previous training-champ (feature length changed). The first keep "
-            "must have mean life-force differential > 0 on both seats versus the keyword HEURISTIC pack. "
+            "must have mean life-force differential not worse than the previous kept LINEAR pack on both seats. "
             "Zeros remains seeds/scale-0.linear.json as a smoke file, not the champ."
         ),
     }
@@ -619,8 +616,8 @@ def gate_vs_kept(
     gate_dir.mkdir(parents=True, exist_ok=True)
     # (label, candidate side, dark weights, light weights)
     seats = (
-        ("as-dark", "DARK", cand_weights, kept_weights),
-        ("as-light", "LIGHT", kept_weights, cand_weights),
+        ("gate-previous-as-dark", "DARK", cand_weights, kept_weights),
+        ("gate-previous-as-light", "LIGHT", kept_weights, cand_weights),
     )
     measured: dict[str, dict[str, Any]] = {}
     for label, side, dark_w, light_w in seats:
@@ -636,6 +633,7 @@ def gate_vs_kept(
             max_decisions=max_decisions,
             dark_weights=dark_w,
             light_weights=light_w,
+            write_traces=False,
         )
         if not meta.get("ok"):
             return {"ok": False, "label": label, "exit": meta.get("exit"), "opponent": "previous-kept-linear"}
@@ -665,6 +663,8 @@ def gate_vs_kept(
     }
     log(
         "gate LINEAR vs previous kept LINEAR "
+        f"candidate={cand_weights.resolve()} opponent={kept_weights.resolve()} "
+        "not HEURISTIC not ADVANCED not Beginner "
         f"pooled WR={meas.get('candidateWinRate')} "
         f"meanLF={meas.get('meanCandidateLfDiff')} "
         f"dark={as_dark} light={as_light}"
@@ -850,33 +850,39 @@ def one_round(
         f"finished={len(finished)} decisionsUsed={stats['decisionsUsed']} "
         f"skipped={stats['decisionsSkipped']}"
     )
-    meas = gate_vs_opponents(
+    log(
+        f"round {rnd}: gate opponent=LINEAR previous kept pack {champ_path.resolve()} "
+        f"round={kept.get('round')} both seats; not HEURISTIC; not ADVANCED; not Beginner"
+    )
+    meas = gate_vs_kept(
         classpath=classpath,
         cand_weights=cand_path,
+        kept_weights=champ_path,
         gate_dir=round_dir / "gate",
         per_seat=args.gate_per_seat,
         max_millis=args.max_millis,
         max_decisions=args.max_decisions,
     )
     report["gate"] = meas
-    report["gateOpponents"] = [KEYWORD_SEAT]
-    learned = learned_opponent_bar(kept)
-    report["keepMode"] = "not-worse-lf-than-keyword" if learned else "lf-above-zero-vs-keyword"
+    report["gateOpponents"] = ["LINEAR"]
+    report["gateOpponentPack"] = str(champ_path.resolve())
+    report["gateOpponentRound"] = kept.get("round")
+    report["keepMode"] = "not-worse-lf-than-previous-linear"
     if not meas.get("ok"):
         report["skipped"] = "gate jvm failed; kept previous champ"
         log(f"round {rnd}: gate failed; kept previous champ")
         _write_json(round_dir / "report.json", report)
         return report
-    ok, detail = decide_keep(meas, learned, min_games)
+    ok, detail = should_promote(meas, EVEN_BAR, min_games)
     report["promoteDetail"] = detail
     report["comparedToRound"] = kept.get("round")
     if not ok:
-        report["skipped"] = "gate did not clear keyword AckbarBot on both seats (mean LF)"
+        report["skipped"] = "gate did not clear previous kept LINEAR pack on both seats (mean LF)"
         log(f"round {rnd}: KEEP previous champ ({detail})")
         _write_json(round_dir / "report.json", report)
         return report
     pack["trainer"]["promoted"] = True
-    pack["trainer"]["gateOpponents"] = [KEYWORD_SEAT]
+    pack["trainer"]["gateOpponents"] = ["LINEAR"]
     write_pack(cand_path, pack)
     pointer = {
         "schema": "linear-overnight-current.v1",
@@ -884,10 +890,19 @@ def one_round(
         "round": rnd,
         "init": kept.get("init") or args.init,
         "promoted": True,
-        "metrics": {"opponents": meas.get("opponents")},
+        "metrics": {
+            "opponent": "previous-kept-linear",
+            "seat": "LINEAR",
+            "asDark": meas.get("asDark"),
+            "asLight": meas.get("asLight"),
+            "candidateWinRate": meas.get("candidateWinRate"),
+            "meanCandidateLfDiff": meas.get("meanCandidateLfDiff"),
+        },
         "comparedTo": {
             "round": kept.get("round"),
             "role": kept.get("role"),
+            "weights": "current.linear.json",
+            "seat": "LINEAR",
             "mode": report["keepMode"],
         },
         "updateRule": stats["updateRule"],
@@ -941,7 +956,6 @@ def run(argv: list[str] | None = None) -> None:
 
     last_round, hour_cap = run_limits(args.rounds, args.hours)
     deadline = None if hour_cap is None else time.time() + hour_cap * 3600.0
-    keyword = keyword_weights_path()
     log(
         f"start rounds={'until-killed' if last_round is None else last_round} "
         f"hours={'none' if deadline is None else hour_cap} games={args.games} "
@@ -950,8 +964,9 @@ def run(argv: list[str] | None = None) -> None:
     )
     log("no shuffle seed; WC96; premiere_anh; self-play LINEAR vs LINEAR same weights file")
     log(
-        "gate vs keyword AckbarBot only seat=HEURISTIC "
-        f"weights={keyword}; not a YodaBot/ADVANCED gate"
+        "gate opponent is the previous kept LINEAR pack (current.linear.json) "
+        "on both seats; not HEURISTIC; not the heuristic AckbarBot 1.0 pack; "
+        "not YodaBot/ADVANCED; not Beginner"
     )
     log("zeros pack is not a gate opponent; win rate is logged, not a bar; Beginner is not the bar")
     log("decision jsonl is a sample (traceGames=2, traceDecisions=100) for the update; gate writes CSV only")
@@ -974,6 +989,12 @@ def run(argv: list[str] | None = None) -> None:
         f"resume from round {kept.get('round')} role={kept.get('role')} "
         f"promoted={kept.get('promoted')} next={start_round} "
         f"weights=current.linear.json source={kept.get('sourcePack')}"
+    )
+    log(
+        "gate opponent file="
+        f"{(out_dir / 'current.linear.json').resolve()} "
+        f"round={kept.get('round')} role={kept.get('role')} seat=LINEAR both seats; "
+        "not HEURISTIC; not ADVANCED; not Beginner"
     )
 
     consecutive_failures = 0

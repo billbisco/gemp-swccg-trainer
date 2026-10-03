@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Unattended LINEAR vs LINEAR loop. Runs until the process is killed.
 # Self-play uses the kept pack (current.linear.json) on both seats.
-# The promotion gate is life-force only, both seats, against the keyword
-# AckbarBot (HEURISTIC + champs/_promoted heuristic pack). Not a YodaBot gate.
-# No Beginner opponent. Decision jsonl is a small sample; csv/json stay.
+# The promotion gate is life-force only, both seats, LINEAR vs the previous
+# kept linear pack (current.linear.json). Not HEURISTIC, not YodaBot/ADVANCED,
+# not Beginner. Decision jsonl is a small sample; csv/json stay.
 # --rounds 0 and --hours 0 disable the round count and the hour budget.
 # Per-game max-decisions / max-millis still stop a single stuck game.
 # --init is used only when current.linear.json is missing or unusable.

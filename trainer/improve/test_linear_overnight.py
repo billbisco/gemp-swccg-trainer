@@ -145,15 +145,18 @@ class HeadToHeadGateTest(unittest.TestCase):
         ok, _detail = should_promote(cand, EVEN_BAR, min_games=2)
         self.assertFalse(ok)
 
-    def test_rule_is_life_force_vs_keyword_pack_not_yoda(self) -> None:
-        self.assertIn("no YodaBot/ADVANCED gate", PROMOTION_RULE)
-        self.assertIn("HEURISTIC", PROMOTION_RULE)
-        self.assertIn("heuristic-v1-wc96-r08-blend-adv25", PROMOTION_RULE)
+    def test_rule_is_life_force_vs_previous_linear_pack(self) -> None:
+        self.assertIn("previous kept linear pack", PROMOTION_RULE)
+        self.assertIn("current.linear.json", PROMOTION_RULE)
+        self.assertIn("seat LINEAR", PROMOTION_RULE)
         self.assertIn("not worse", PROMOTION_RULE)
         self.assertIn("Win rate is logged, not a bar", PROMOTION_RULE)
+        self.assertIn("no YodaBot/ADVANCED gate", PROMOTION_RULE)
+        self.assertIn("no HEURISTIC gate", PROMOTION_RULE)
+        self.assertIn("not Beginner", PROMOTION_RULE)
         self.assertIn("zeros pack is not a gate", PROMOTION_RULE)
+        self.assertNotIn("heuristic-v1-wc96-r08-blend-adv25", PROMOTION_RULE)
         self.assertNotIn("vs BEGINNER", PROMOTION_RULE)
-        self.assertNotIn("head-to-head", PROMOTION_RULE)
         self.assertEqual(YODA_SEAT, "ADVANCED")
         self.assertEqual(KEYWORD_SEAT, "HEURISTIC")
         self.assertTrue(str(KEYWORD_PACK_REL).endswith(
