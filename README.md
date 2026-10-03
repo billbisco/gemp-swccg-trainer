@@ -40,6 +40,20 @@ Honest limit: each packed slot `i` is paired with only one action feature (`i mo
 
 Gym FEATURES traces (`-Dheadless.traceLevel=FEATURES`) embed `state.packed` and `state.bagHash`. The gym `LinearPolicyAi` multiplies each of those values by one action feature.
 
+### Overnight LINEAR vs LINEAR loop
+
+`scripts/linear_overnight.sh` repeats self-play (same candidate weights on both seats, WC96, `premiere_anh`, no shuffle seed). Each round keeps up to 8 **finished** games (maxDecisions / maxMillis rows are skipped) and updates with `trainer.improve.linear_selfplay`. It then gates the candidate vs BEGINNER, 4 games per seat. The candidate becomes the training champ only when **both** seats are not worse than the previous kept pack on win rate **and** mean life-force differential. Pointer: `runs/linear-overnight/CURRENT.json` and `current.linear.json`. It does not write `champs/_promoted/`.
+
+```bash
+# foreground
+./scripts/linear_overnight.sh
+# unattended
+mkdir -p runs/linear-overnight
+setsid nohup ./scripts/linear_overnight.sh >> runs/linear-overnight/loop.log 2>&1 < /dev/null &
+echo $! > runs/linear-overnight/loop.pid
+```
+
+
 
 ## Quick start
 
