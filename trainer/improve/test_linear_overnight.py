@@ -7,15 +7,26 @@ from pathlib import Path
 from trainer.improve.linear_overnight import (
     EVEN_BAR,
     FORBIDDEN,
+    KEYWORD_PACK_REL,
+    KEYWORD_SEAT,
     PROMOTION_RULE,
+    YODA_SEAT,
     assert_safe_out_dir,
+    decide_keep,
+    ensure_scale1_seed,
+    gate_weight_pair,
+    holds_real_keywords,
+    learned_opponent_bar,
     measure_seat_csv,
     next_round_index,
     run_limits,
+    seat_beats,
     seat_not_worse,
     select_finished,
     should_promote,
 )
+from trainer.improve.ackbar_seed import make_seed_pack
+from trainer.improve.linear_selfplay import make_pack
 from trainer.improve.linear_selfplay import DARK_PLAYER, LIGHT_PLAYER, linear_weight_cli
 
 
@@ -134,10 +145,20 @@ class HeadToHeadGateTest(unittest.TestCase):
         ok, _detail = should_promote(cand, EVEN_BAR, min_games=2)
         self.assertFalse(ok)
 
-    def test_rule_names_kept_pack_not_beginner_opponent(self) -> None:
-        self.assertIn("previous kept AckbarBot", PROMOTION_RULE)
-        self.assertIn("No Beginner", PROMOTION_RULE)
+    def test_rule_names_yoda_and_keyword_pack_not_zeros(self) -> None:
+        self.assertIn("ADVANCED", PROMOTION_RULE)
+        self.assertIn("HEURISTIC", PROMOTION_RULE)
+        self.assertIn("heuristic-v1-wc96-r08-blend-adv25", PROMOTION_RULE)
+        self.assertIn("not worse", PROMOTION_RULE)
+        self.assertIn("strictly beat", PROMOTION_RULE)
+        self.assertIn("zeros pack is a smoke file", PROMOTION_RULE)
         self.assertNotIn("vs BEGINNER", PROMOTION_RULE)
+        self.assertNotIn("head-to-head", PROMOTION_RULE)
+        self.assertEqual(YODA_SEAT, "ADVANCED")
+        self.assertEqual(KEYWORD_SEAT, "HEURISTIC")
+        self.assertTrue(str(KEYWORD_PACK_REL).endswith(
+            "champs/_promoted/heuristic-v1-wc96-r08-blend-adv25/weights.json"
+        ))
 
     def test_same_file_is_one_flag_split_files_are_per_seat(self) -> None:
         same = linear_weight_cli(Path("/tmp/current.linear.json"))
@@ -173,6 +194,102 @@ class HeadToHeadGateTest(unittest.TestCase):
         self.assertEqual(dark["meanLfDiff"], 0.0)  # (10-4) + (0-6) = 0
         self.assertEqual(light["wins"], 1)
         self.assertEqual(light["meanLfDiff"], 0.0)
+
+
+class OpponentGateTest(unittest.TestCase):
+    def _both(self, wins, lf, games=4):
+        return _meas(_seat(games, wins, lf), _seat(games, wins, lf))
+
+    def _meas_opponents(self, yoda, keyword):
+        return {"ok": True, "opponents": {"yoda": yoda, "keyword": keyword}}
+
+    def test_first_keep_requires_beating_both_opponents(self) -> None:
+        meas = self._meas_opponents(self._both(3, 1.0), self._both(3, 2.0))
+        ok, detail = decide_keep(meas, None, min_games=2)
+        self.assertTrue(ok)
+        self.assertTrue(all("beats" in why for why in detail.values()))
+
+    def test_first_keep_tie_is_not_enough(self) -> None:
+        tied = self._meas_opponents(self._both(2, 0.0), self._both(2, 0.0))
+        ok, detail = decide_keep(tied, None, min_games=2)
+        self.assertFalse(ok)
+        self.assertTrue(any("winRate" in why for why in detail.values()))
+
+    def test_first_keep_fails_if_one_opponent_seat_does_not_beat(self) -> None:
+        yoda = self._both(3, 1.0)
+        keyword = _meas(_seat(4, 3, 1.0), _seat(4, 2, 0.0))
+        ok, detail = decide_keep(self._meas_opponents(yoda, keyword), None, min_games=2)
+        self.assertFalse(ok)
+        self.assertIn("meanLfDiff", detail["keyword.asLight"])
+
+    def test_equality_with_previous_learned_pack_keeps(self) -> None:
+        block = self._both(1, -2.0)
+        meas = self._meas_opponents(block, block)
+        ok, detail = decide_keep(meas, meas["opponents"], min_games=2)
+        self.assertTrue(ok)
+        self.assertTrue(all("not worse" in why for why in detail.values()))
+
+    def test_worse_than_previous_on_one_metric_rejects(self) -> None:
+        prev = self._meas_opponents(self._both(2, 1.0), self._both(2, 1.0))
+        cand_yoda = _meas(_seat(4, 2, 1.0), _seat(4, 2, 0.5))
+        cand = self._meas_opponents(cand_yoda, self._both(2, 1.0))
+        ok, detail = decide_keep(cand, prev["opponents"], min_games=2)
+        self.assertFalse(ok)
+        self.assertIn("meanLfDiff", detail["yoda.asLight"])
+
+    def test_too_few_finished_games_does_not_keep(self) -> None:
+        block = self._both(2, 5.0, games=1)
+        ok, detail = decide_keep(self._meas_opponents(block, block), None, min_games=2)
+        self.assertFalse(ok)
+        self.assertIn("finished games", detail["yoda.asDark"])
+
+    def test_learned_bar_ignores_zeros_baseline(self) -> None:
+        self.assertIsNone(learned_opponent_bar({"role": "baseline", "promoted": False, "metrics": None}))
+        self.assertIsNone(learned_opponent_bar({"role": "ackbar-seed", "promoted": False}))
+        good, why = seat_beats(_seat(4, 2, 0.0), EVEN_BAR["asDark"], min_games=2)
+        self.assertFalse(good)
+        self.assertIn("<=", why)
+
+    def test_advanced_flag_is_linear_weights_only(self) -> None:
+        cand = Path("/tmp/cand.linear.json")
+        dark, light = gate_weight_pair(cand, "ADVANCED", None, "DARK")
+        flags = linear_weight_cli(cand, dark_weights=dark, light_weights=light)
+        self.assertEqual(flags, ["--linear-weights=/tmp/cand.linear.json"])
+        self.assertFalse(any("BEGINNER" in arg or "zeros" in arg for arg in flags))
+
+    def test_heuristic_flag_puts_keyword_file_on_opponent_seat(self) -> None:
+        cand = Path("/tmp/cand.linear.json")
+        keyword = Path("/tmp/heuristic-weights.json")
+        dark, light = gate_weight_pair(cand, "HEURISTIC", keyword, "LIGHT")
+        flags = linear_weight_cli(cand, dark_weights=dark, light_weights=light)
+        self.assertEqual(
+            flags,
+            [
+                "--dark-weights=/tmp/heuristic-weights.json",
+                "--light-weights=/tmp/cand.linear.json",
+            ],
+        )
+
+    def test_scale1_seed_holds_keywords_and_pass_only_does_not(self) -> None:
+        seed = make_seed_pack(1.0)
+        self.assertTrue(holds_real_keywords(seed))
+        self.assertFalse(holds_real_keywords(make_pack("zeros")))
+        self.assertFalse(holds_real_keywords(make_pack("tiebreak")))
+        pass_only = make_pack("zeros")
+        from trainer.improve.linear_selfplay import AF_KIND as kind
+        from trainer.improve.linear_selfplay import KIND_KEYWORDS as names
+        from trainer.improve.linear_selfplay import PACKED_DIM, BAG_HASH_DIM
+        pass_only["W"][PACKED_DIM + BAG_HASH_DIM + kind + names.index("pass")] = -160.0
+        self.assertFalse(holds_real_keywords(pass_only))
+
+    def test_missing_scale1_is_rewritten_from_advanced_scores(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path, note = ensure_scale1_seed(Path(tmp))
+            self.assertTrue(path.is_file())
+            self.assertIn("rewrote", note)
+            pack = __import__("json").loads(path.read_text(encoding="utf-8"))
+            self.assertTrue(holds_real_keywords(pack))
 
 
 if __name__ == "__main__":
