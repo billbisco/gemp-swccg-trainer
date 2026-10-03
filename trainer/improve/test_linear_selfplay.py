@@ -16,6 +16,7 @@ from trainer.improve.linear_selfplay import (
     KIND_KEYWORDS,
     WEIGHT_CLIP,
     DARK_PLAYER,
+    LIGHT_PLAYER,
     INTERACT_FEAT_DIM,
     PACKED_DIM,
     UPDATE_REINFORCE,
@@ -179,10 +180,33 @@ class LinearSelfPlayTest(unittest.TestCase):
                     "darkLifeForce": 30,
                     "lightLifeForce": 0,
                 },
-            }
+            },
+            {
+                "steps": [
+                    {
+                        "type": "step",
+                        "side": "DARK",
+                        "playerId": "~OzzelBot",
+                        "aiSkill": "LINEAR",
+                        "accepted": True,
+                        "decisionType": "MULTIPLE_CHOICE",
+                        "chosen": "1",
+                        "optionCount": 2,
+                        "options": {"items": [{"text": "Fire laser"}, {"text": "Pass"}]},
+                        "state": {"packed": packed, "schemaVersion": 1},
+                    }
+                ],
+                "outcome": {
+                    "winner": LIGHT_PLAYER,
+                    "finished": True,
+                    "darkLifeForce": 0,
+                    "lightLifeForce": 30,
+                },
+            },
         ]
         report = update_from_games(pack, games, lr=0.1)
         self.assertEqual(report["updateRule"], UPDATE_REINFORCE)
+        self.assertGreater(report["meanAbsAdvantage"], 0.0)
         weights = pack["W"]
         self.assertNotEqual(weights[AF_PASS], 0.0)
         self.assertNotEqual(weights[AF_INDEX], 0.0)
@@ -233,11 +257,38 @@ class LinearSelfPlayTest(unittest.TestCase):
                     "darkLifeForce": 30,
                     "lightLifeForce": 0,
                 },
-            }
+            },
+            {
+                "steps": [
+                    {
+                        "type": "step",
+                        "side": "DARK",
+                        "playerId": "~OzzelBot",
+                        "aiSkill": "LINEAR",
+                        "accepted": True,
+                        "decisionType": "MULTIPLE_CHOICE",
+                        "chosen": "1",
+                        "optionCount": 2,
+                        "options": {"items": [{"text": "Fire laser"}, {"text": "Pass"}]},
+                        "state": {
+                            "packed": [0.0] * PACKED_DIM,
+                            "bagHash": bag,
+                            "schemaVersion": 1,
+                        },
+                    }
+                ],
+                "outcome": {
+                    "winner": LIGHT_PLAYER,
+                    "finished": True,
+                    "darkLifeForce": 0,
+                    "lightLifeForce": 30,
+                },
+            },
         ]
         report = update_from_games(pack, games, lr=0.1)
         self.assertEqual(report["updateRule"], UPDATE_REINFORCE)
-        self.assertEqual(report["decisionsWithBagHash"], 1)
+        self.assertGreater(report["meanAbsAdvantage"], 0.0)
+        self.assertEqual(report["decisionsWithBagHash"], 2)
         weights = pack["W"]
         self.assertNotEqual(weights[PACKED_DIM + AF_PASS], 0.0)
         self.assertNotEqual(weights[PACKED_DIM + AF_INDEX], 0.0)

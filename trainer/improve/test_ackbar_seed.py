@@ -13,15 +13,19 @@ from trainer.improve.ackbar_seed import (
     features_without_keyword,
     make_seed_pack,
     pick_winner,
+    seed_action_unscaled,
     unmapped_keywords,
     yoda_action_base,
 )
 from trainer.improve.linear_selfplay import (
     ACTION_FEAT_DIM,
+    AF_CHOICE,
     AF_KIND,
     AF_ONES,
     AF_PASS,
     BAG_HASH_DIM,
+    CHOICE_KEYWORDS,
+    GROUNDED_START,
     KIND_KEYWORDS,
     PACKED_DIM,
     W_LEN,
@@ -33,14 +37,16 @@ class AlignmentTest(unittest.TestCase):
     def test_feature_order_matches_linear_policy(self) -> None:
         names = action_feature_names()
         self.assertEqual(len(names), ACTION_FEAT_DIM)
-        self.assertEqual(ACTION_FEAT_DIM, 50)
+        self.assertEqual(ACTION_FEAT_DIM, 227)
         self.assertEqual(names[0], "pass")
         self.assertEqual(names[1], "integerNorm")
         self.assertEqual(names[2], "indexNorm")
         self.assertEqual(names[3:19], [f"textHash{i}" for i in range(16)])
         self.assertEqual(names[19:23], [f"blueprintHash{i}" for i in range(4)])
         self.assertEqual(names[23], "ones")
-        self.assertEqual(names[AF_KIND:], [f"kind:{name}" for name in KIND_KEYWORDS])
+        self.assertEqual(names[AF_KIND:AF_CHOICE], [f"kind:{name}" for name in KIND_KEYWORDS])
+        self.assertEqual(names[AF_CHOICE:GROUNDED_START], [f"choice:{name}" for name in CHOICE_KEYWORDS])
+        self.assertEqual(names[GROUNDED_START], "type:ADMIRALS_ORDER")
 
     def test_every_action_keyword_maps_and_pass_stays_negative(self) -> None:
         base = yoda_action_base()
@@ -64,15 +70,15 @@ class AlignmentTest(unittest.TestCase):
         self.assertEqual(list(YODA_ACTION_KEYWORDS), grab("ACTION_WEIGHTS") + grab("ACTION_PENALTIES"))
         self.assertEqual(list(YODA_CHOICE_KEYWORDS), grab("CHOICE_WEIGHTS") + grab("CHOICE_PENALTIES"))
 
-    def test_unmapped_keywords_are_the_choice_table(self) -> None:
+    def test_choice_table_is_its_own_block(self) -> None:
         rows = unmapped_keywords()
-        keys = {(row["table"], row["keyword"]) for row in rows}
-        self.assertNotIn(("action", "pass"), keys)
-        self.assertNotIn(("action", "force drain"), keys)
-        self.assertIn(("choice", "pass"), keys)
-        self.assertIn(("choice", "yes"), keys)
-        self.assertEqual(len([r for r in rows if r["table"] == "action"]), 0)
-        self.assertEqual(len([r for r in rows if r["table"] == "choice"]), len(YODA_CHOICE_KEYWORDS))
+        self.assertEqual(rows, [])
+        base = seed_action_unscaled()
+        self.assertEqual(base[AF_CHOICE + CHOICE_KEYWORDS.index("draw")], 60.0)
+        self.assertEqual(base[AF_CHOICE + CHOICE_KEYWORDS.index("pass")], -40.0)
+        self.assertEqual(base[AF_KIND + KIND_KEYWORDS.index("pass")], -160.0)
+        self.assertEqual(base[GROUNDED_START], 0.0)
+        self.assertEqual(sum(1 for v in base[GROUNDED_START:] if v != 0.0), 0)
 
     def test_hash_and_norm_features_stay_zero(self) -> None:
         bare = features_without_keyword()
@@ -100,7 +106,10 @@ class AlignmentTest(unittest.TestCase):
         self.assertEqual(weights[base + AF_ONES], 0.0)
         self.assertEqual(weights[base + AF_KIND + KIND_KEYWORDS.index("pass")], -200.0)
         self.assertEqual(weights[base + AF_KIND + KIND_KEYWORDS.index("force drain")], 200.0)
+        self.assertEqual(weights[base + AF_CHOICE + CHOICE_KEYWORDS.index("draw")], 75.0)
+        self.assertEqual(weights[base + AF_CHOICE + CHOICE_KEYWORDS.index("pass")], -50.0)
         self.assertTrue(all(v == 0.0 for i in range(AF_KIND) for v in [weights[base + i]]))
+        self.assertTrue(all(weights[base + i] == 0.0 for i in range(GROUNDED_START, ACTION_FEAT_DIM)))
 
     def test_scale_zero_is_all_zeros(self) -> None:
         pack = make_seed_pack(0.0)

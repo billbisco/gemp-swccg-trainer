@@ -51,12 +51,12 @@ class PromotionTest(unittest.TestCase):
         self.assertIn("not worse", detail["asDark"])
         self.assertIn("not worse", detail["asLight"])
 
-    def test_one_seat_winrate_drop_rejects(self) -> None:
+    def test_winrate_drop_does_not_reject_when_lf_holds(self) -> None:
         base = _meas(_seat(4, 2, 1.0), _seat(4, 2, 1.0))
         cand = _meas(_seat(4, 1, 5.0), _seat(4, 3, 5.0))
         ok, detail = should_promote(cand, base, min_games=2)
-        self.assertFalse(ok)
-        self.assertIn("winRate", detail["asDark"])
+        self.assertTrue(ok)
+        self.assertNotIn("winRate", detail["asDark"])
 
     def test_lf_drop_rejects_even_if_winrate_holds(self) -> None:
         base = _meas(_seat(4, 2, 3.0), _seat(4, 2, 3.0))
@@ -134,24 +134,24 @@ class HeadToHeadGateTest(unittest.TestCase):
         self.assertIn("not worse", detail["asDark"])
         self.assertIn("not worse", detail["asLight"])
 
-    def test_below_even_winrate_rejects(self) -> None:
+    def test_below_even_winrate_still_keeps_when_lf_holds(self) -> None:
         cand = _meas(_seat(4, 1, 1.0), _seat(4, 2, 1.0))
         ok, detail = should_promote(cand, EVEN_BAR, min_games=2)
-        self.assertFalse(ok)
-        self.assertIn("winRate", detail["asDark"])
+        self.assertTrue(ok)
+        self.assertNotIn("winRate", detail["asDark"])
 
     def test_negative_lf_rejects(self) -> None:
         cand = _meas(_seat(4, 2, 0.0), _seat(4, 3, -0.1))
         ok, _detail = should_promote(cand, EVEN_BAR, min_games=2)
         self.assertFalse(ok)
 
-    def test_rule_names_yoda_and_keyword_pack_not_zeros(self) -> None:
-        self.assertIn("ADVANCED", PROMOTION_RULE)
+    def test_rule_is_life_force_vs_keyword_pack_not_yoda(self) -> None:
+        self.assertIn("no YodaBot/ADVANCED gate", PROMOTION_RULE)
         self.assertIn("HEURISTIC", PROMOTION_RULE)
         self.assertIn("heuristic-v1-wc96-r08-blend-adv25", PROMOTION_RULE)
         self.assertIn("not worse", PROMOTION_RULE)
-        self.assertIn("strictly beat", PROMOTION_RULE)
-        self.assertIn("zeros pack is a smoke file", PROMOTION_RULE)
+        self.assertIn("Win rate is logged, not a bar", PROMOTION_RULE)
+        self.assertIn("zeros pack is not a gate", PROMOTION_RULE)
         self.assertNotIn("vs BEGINNER", PROMOTION_RULE)
         self.assertNotIn("head-to-head", PROMOTION_RULE)
         self.assertEqual(YODA_SEAT, "ADVANCED")
@@ -203,21 +203,23 @@ class OpponentGateTest(unittest.TestCase):
     def _meas_opponents(self, yoda, keyword):
         return {"ok": True, "opponents": {"yoda": yoda, "keyword": keyword}}
 
-    def test_first_keep_requires_beating_both_opponents(self) -> None:
-        meas = self._meas_opponents(self._both(3, 1.0), self._both(3, 2.0))
+    def test_first_keep_requires_positive_lf_vs_keyword_only(self) -> None:
+        meas = self._meas_opponents(self._both(0, -5.0), self._both(0, 2.0))
         ok, detail = decide_keep(meas, None, min_games=2)
         self.assertTrue(ok)
-        self.assertTrue(all("beats" in why for why in detail.values()))
+        self.assertEqual(set(detail), {"keyword.asDark", "keyword.asLight"})
+        self.assertTrue(all("mean LF" in why for why in detail.values()))
 
     def test_first_keep_tie_is_not_enough(self) -> None:
-        tied = self._meas_opponents(self._both(2, 0.0), self._both(2, 0.0))
+        tied = self._meas_opponents(self._both(4, 9.0), self._both(2, 0.0))
         ok, detail = decide_keep(tied, None, min_games=2)
         self.assertFalse(ok)
-        self.assertTrue(any("winRate" in why for why in detail.values()))
+        self.assertTrue(any("meanLfDiff" in why for why in detail.values()))
+        self.assertFalse(any("winRate" in why for why in detail.values()))
 
-    def test_first_keep_fails_if_one_opponent_seat_does_not_beat(self) -> None:
+    def test_first_keep_fails_if_one_keyword_seat_does_not_beat(self) -> None:
         yoda = self._both(3, 1.0)
-        keyword = _meas(_seat(4, 3, 1.0), _seat(4, 2, 0.0))
+        keyword = _meas(_seat(4, 0, 1.0), _seat(4, 0, 0.0))
         ok, detail = decide_keep(self._meas_opponents(yoda, keyword), None, min_games=2)
         self.assertFalse(ok)
         self.assertIn("meanLfDiff", detail["keyword.asLight"])
@@ -229,19 +231,19 @@ class OpponentGateTest(unittest.TestCase):
         self.assertTrue(ok)
         self.assertTrue(all("not worse" in why for why in detail.values()))
 
-    def test_worse_than_previous_on_one_metric_rejects(self) -> None:
+    def test_worse_keyword_lf_rejects_even_if_yoda_block_is_worse(self) -> None:
         prev = self._meas_opponents(self._both(2, 1.0), self._both(2, 1.0))
-        cand_yoda = _meas(_seat(4, 2, 1.0), _seat(4, 2, 0.5))
-        cand = self._meas_opponents(cand_yoda, self._both(2, 1.0))
+        cand = self._meas_opponents(self._both(0, -9.0), _meas(_seat(4, 2, 1.0), _seat(4, 2, 0.5)))
         ok, detail = decide_keep(cand, prev["opponents"], min_games=2)
         self.assertFalse(ok)
-        self.assertIn("meanLfDiff", detail["yoda.asLight"])
+        self.assertIn("meanLfDiff", detail["keyword.asLight"])
+        self.assertNotIn("yoda.asLight", detail)
 
     def test_too_few_finished_games_does_not_keep(self) -> None:
         block = self._both(2, 5.0, games=1)
         ok, detail = decide_keep(self._meas_opponents(block, block), None, min_games=2)
         self.assertFalse(ok)
-        self.assertIn("finished games", detail["yoda.asDark"])
+        self.assertIn("finished games", detail["keyword.asDark"])
 
     def test_learned_bar_ignores_zeros_baseline(self) -> None:
         self.assertIsNone(learned_opponent_bar({"role": "baseline", "promoted": False, "metrics": None}))

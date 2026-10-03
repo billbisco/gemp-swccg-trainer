@@ -12,16 +12,16 @@
     "bagHashDim": { "type": "integer", "minimum": 0, "maximum": 64 },
     "actionFeatDim": {
       "type": "integer",
-      "const": 24,
-      "description": "0 pass, 1 integerNorm, 2 indexNorm, 3-18 text hash, 19-22 blueprint hash, 23 ones. Matches com.gempukku.swccgo.ai.models.LinearPolicyAi."
+      "const": 227,
+      "description": "0 pass, 1 integerNorm, 2 indexNorm, 3-18 text hash, 19-22 blueprint hash, 23 ones, 24-49 action-keyword kinds, 50-70 choice-table kinds, then grounded card type/subtype/category/side and state facts. Matches com.gempukku.swccgo.ai.models.LinearPolicyAi.ACTION_FEAT_DIM. Not one weight per card name."
     },
     "bias": { "type": "number" },
     "W": {
       "type": "array",
-      "minItems": 152,
-      "maxItems": 216,
+      "minItems": 355,
+      "maxItems": 419,
       "items": { "type": "number" },
-      "description": "Length must be packedDim + bagHashDim + actionFeatDim (152 when bagHashDim is 0, 168 when bagHashDim is 16). Prefix slots are state×action interactions, not a constant added to every action. The last actionFeatDim entries are direct action weights."
+      "description": "Length must be packedDim + bagHashDim + actionFeatDim (355 when bagHashDim is 0, 371 when bagHashDim is 16, 419 when bagHashDim is 64). Prefix slots are state×action interactions, not a constant added to every action. The last actionFeatDim entries are direct action weights."
     }
   },
   "additionalProperties": true

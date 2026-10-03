@@ -64,20 +64,16 @@ from trainer.improve.linear_selfplay import (
 )
 
 PROMOTION_RULE = (
-    "Keep a candidate only when it is not worse than the previous kept linear pack "
-    "against BOTH opponents, on BOTH seats, on win rate AND mean life-force "
-    "differential. Opponent A is YodaBot, headless seat ADVANCED (AdvancedAi, "
-    "HallServer ~YodaBot, no weights file). Opponent B is the keyword AckbarBot "
-    "pack champs/_promoted/heuristic-v1-wc96-r08-blend-adv25, headless seat "
-    "HEURISTIC (ConfigurableHeuristicAi with that weights file). Equality counts "
-    "as not worse. The zeros pack is a smoke file and is not an opponent. "
+    "Keep a candidate when its mean life-force differential is not worse than the "
+    "previous kept linear pack, on BOTH seats, against the keyword AckbarBot only "
+    "(headless seat HEURISTIC, champs/_promoted/heuristic-v1-wc96-r08-blend-adv25). "
+    "Equality on life force counts as not worse. Win rate is logged, not a bar. "
+    "There is no YodaBot/ADVANCED gate. The zeros pack is not a gate opponent. "
     "Beginner is never the bar. If there is no previous learned pack, the first "
-    "keep must strictly beat both opponents on both seats (win rate > 0.5 AND "
-    "mean life-force differential > 0), not a tie and not a zeros self-play. "
-    "Unfinished maxDecisions/maxMillis games do not count. At least 2 finished "
-    "games per seat per opponent are required. Self-play is LINEAR vs LINEAR "
-    "on the current weights, WC96, premiere_anh, no shuffle seed. "
-    "Never writes champs/_promoted."
+    "keep must have mean life-force differential > 0 on both seats versus the "
+    "keyword pack. Unfinished maxDecisions/maxMillis games do not count. At least "
+    "2 finished games per seat are required. Self-play is LINEAR vs LINEAR, WC96, "
+    "premiere_anh, no shuffle seed. Never writes champs/_promoted."
 )
 
 # Even split against an opponent. The first keep must strictly beat this.
@@ -207,16 +203,15 @@ def seat_not_worse(cand: dict[str, Any], base: dict[str, Any], min_games: int) -
     if games < min_games:
         return False, f"finished games {games} < {min_games}"
     reasons: list[str] = []
-    for key in ("winRate", "meanLfDiff"):
-        c = cand.get(key)
-        b = base.get(key)
-        if c is None or b is None:
-            return False, f"missing {key}"
-        if float(c) + 1e-9 < float(b):
-            reasons.append(f"{key} {float(c):.6g} < {float(b):.6g}")
+    c = cand.get("meanLfDiff")
+    b = base.get("meanLfDiff")
+    if c is None or b is None:
+        return False, "missing meanLfDiff"
+    if float(c) + 1e-9 < float(b):
+        reasons.append(f"meanLfDiff {float(c):.6g} < {float(b):.6g}")
     if reasons:
         return False, "; ".join(reasons)
-    return True, "not worse on win rate and mean LF differential"
+    return True, "not worse on mean LF differential"
 
 
 def should_promote(
@@ -235,7 +230,7 @@ def should_promote(
 
 
 def seat_beats(cand: dict[str, Any], base: dict[str, Any], min_games: int) -> tuple[bool, str]:
-    """Strictly better on win rate and mean life-force differential.
+    """Strictly better on mean life-force differential. Win rate is not a bar.
 
     Equality is not a beat. Used for the first keep, when there is no previous
     learned pack to tie.
@@ -243,17 +238,13 @@ def seat_beats(cand: dict[str, Any], base: dict[str, Any], min_games: int) -> tu
     games = int(cand.get("games") or 0)
     if games < min_games:
         return False, f"finished games {games} < {min_games}"
-    reasons: list[str] = []
-    for key in ("winRate", "meanLfDiff"):
-        c = cand.get(key)
-        b = base.get(key)
-        if c is None or b is None:
-            return False, f"missing {key}"
-        if not (float(c) > float(b) + 1e-9):
-            reasons.append(f"{key} {float(c):.6g} <= {float(b):.6g}")
-    if reasons:
-        return False, "; ".join(reasons)
-    return True, "beats on win rate and mean LF differential"
+    c = cand.get("meanLfDiff")
+    b = base.get("meanLfDiff")
+    if c is None or b is None:
+        return False, "missing meanLfDiff"
+    if not (float(c) > float(b) + 1e-9):
+        return False, f"meanLfDiff {float(c):.6g} <= {float(b):.6g}"
+    return True, "mean LF differential > 0"
 
 
 def keyword_weights_path() -> Path:
@@ -307,19 +298,18 @@ def learned_opponent_bar(kept: dict[str, Any] | None) -> dict[str, Any] | None:
     opponents = metrics.get("opponents") if isinstance(metrics, dict) else None
     if not isinstance(opponents, dict):
         return None
-    for opp_id in ("yoda", "keyword"):
-        block = opponents.get(opp_id)
-        if not isinstance(block, dict):
+    block = opponents.get("keyword")
+    if not isinstance(block, dict):
+        return None
+    for seat in ("asDark", "asLight"):
+        seat_m = block.get(seat) or {}
+        if not isinstance(seat_m, dict):
             return None
-        for seat in ("asDark", "asLight"):
-            seat_m = block.get(seat) or {}
-            if not isinstance(seat_m, dict):
-                return None
-            if seat_m.get("winRate") is None or seat_m.get("meanLfDiff") is None:
-                return None
-            if int(seat_m.get("games") or 0) < MIN_FINISHED_PER_SEAT:
-                return None
-    return opponents
+        if seat_m.get("meanLfDiff") is None:
+            return None
+        if int(seat_m.get("games") or 0) < MIN_FINISHED_PER_SEAT:
+            return None
+    return {"keyword": block}
 
 
 def decide_keep(
@@ -327,28 +317,27 @@ def decide_keep(
     learned: dict[str, Any] | None,
     min_games: int,
 ) -> tuple[bool, dict[str, str]]:
-    """Both opponents, both seats, both metrics.
+    """Keyword AckbarBot only, both seats, mean life-force differential.
 
-    ``learned`` is the previous kept pack's opponent measurements. When it is
-    missing, the candidate must strictly beat an even split against Yoda and
-    against the keyword pack.
+    ``learned`` is the previous kept pack's keyword measurements. When it is
+    missing, the candidate must have mean LF differential > 0 on both seats.
+    Win rate is not a bar. YodaBot is not a gate.
     """
     if not meas.get("ok"):
         return False, {"gate": "jvm failed or metrics missing"}
     opponents = meas.get("opponents") or {}
     detail: dict[str, str] = {}
+    cand = opponents.get("keyword") or {}
+    base_opp = (learned or {}).get("keyword") or {}
     ok = True
-    for opp_id in ("yoda", "keyword"):
-        cand = opponents.get(opp_id) or {}
-        base_opp = (learned or {}).get(opp_id) or {}
-        for seat in ("asDark", "asLight"):
-            cand_seat = cand.get(seat) or {}
-            if learned is None:
-                good, why = seat_beats(cand_seat, EVEN_BAR[seat], min_games)
-            else:
-                good, why = seat_not_worse(cand_seat, base_opp.get(seat) or {}, min_games)
-            detail[f"{opp_id}.{seat}"] = why
-            ok = ok and good
+    for seat in ("asDark", "asLight"):
+        cand_seat = cand.get(seat) or {}
+        if learned is None:
+            good, why = seat_beats(cand_seat, EVEN_BAR[seat], min_games)
+        else:
+            good, why = seat_not_worse(cand_seat, base_opp.get(seat) or {}, min_games)
+        detail[f"keyword.{seat}"] = why
+        ok = ok and good
     return ok, detail
 
 
@@ -373,14 +362,16 @@ def holds_real_keywords(pack: dict[str, Any]) -> bool:
 
 
 def matches_advanced_scale(pack: dict[str, Any], scale: float) -> bool:
-    """Action weights equal AdvancedAi keyword scores times ``scale``.
+    """Action weights equal AdvancedAi kind and choice scores times ``scale``.
+
+    Grounded type/state slots stay 0.
 
     Imported lazily: ackbar_seed imports this module.
     """
-    from trainer.improve.ackbar_seed import yoda_action_base
+    from trainer.improve.ackbar_seed import seed_action_unscaled
 
     got = _action_weights(pack)
-    base = yoda_action_base()
+    base = seed_action_unscaled()
     if len(got) != len(base):
         return False
     return all(abs(got[i] - base[i] * float(scale)) <= 1e-6 for i in range(len(base)))
@@ -400,13 +391,15 @@ def ensure_scale1_seed(seeds_dir: Path) -> tuple[Path, str]:
             pack = None
     if pack is not None and matches_advanced_scale(pack, 1.0) and holds_real_keywords(pack):
         return path, (
-            "starting pack seeds/scale-1.linear.json; decision-kind weights are "
-            "AdvancedAi action scores at scale 1.0 (non-zero, not only pass)"
+            "starting pack seeds/scale-1.linear.json; kind weights are AdvancedAi "
+            "action scores at scale 1.0 and choice-table weights are AdvancedAi "
+            "choice scores at scale 1.0 (grounded features 0)"
         )
     write_pack(path, make_seed_pack(1.0))
     return path, (
-        "rewrote seeds/scale-1.linear.json so decision-kind features hold "
-        "AdvancedAi action scores at scale 1.0 (file was missing or only a pass penalty)"
+        "rewrote seeds/scale-1.linear.json: kind weights are AdvancedAi action "
+        "scores at scale 1.0, choice-table weights are AdvancedAi choice scores "
+        "at scale 1.0, packed/bag/grounded stay 0 (file missing or wrong length)"
     )
 
 
@@ -442,15 +435,17 @@ def install_start_pack(out_dir: Path, *, force_seed: bool = False) -> tuple[dict
         "comparedTo": None,
         "sourcePack": "seeds/scale-1.linear.json",
         "note": (
-            "Starting pack is seeds/scale-1.linear.json. Decision-kind features are "
-            "AdvancedAi action scores at scale 1.0. Not a learned champ. The first keep "
-            "must beat YodaBot (ADVANCED) and the keyword HEURISTIC pack on both seats. "
+            "Starting pack was re-seeded from seeds/scale-1.linear.json. Kind features "
+            "are AdvancedAi action scores at scale 1.0 and choice-table features are "
+            "AdvancedAi choice scores at scale 1.0. Grounded features stay 0. Not the "
+            "previous training-champ (feature length changed). The first keep "
+            "must have mean life-force differential > 0 on both seats versus the keyword HEURISTIC pack. "
             "Zeros remains seeds/scale-0.linear.json as a smoke file, not the champ."
         ),
     }
     write_pointer(out_dir, seed_path, pointer)
     kept = json.loads((out_dir / "CURRENT.json").read_text(encoding="utf-8"))
-    return kept, seed_note
+    return kept, seed_note + " current.linear.json re-seeded from that file."
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -486,6 +481,7 @@ def play_batch(
     max_decisions: int,
     dark_weights: Path | None = None,
     light_weights: Path | None = None,
+    write_traces: bool = True,
 ) -> dict[str, Any]:
     dark_w = dark_weights or weights
     light_w = light_weights or weights
@@ -509,6 +505,7 @@ def play_batch(
         max_decisions=max_decisions,
         dark_weights=dark_weights,
         light_weights=light_weights,
+        write_traces=write_traces,
     )
     log(f"play {label} exit={meta.get('exit')} ok={meta.get('ok')}")
     return meta
@@ -523,14 +520,19 @@ def collect_finished(
     max_millis: int,
     max_decisions: int,
     max_batches: int,
-) -> tuple[list[dict[str, Any]], int, int]:
-    """Play LINEAR vs LINEAR until ``games`` finished, or ``max_batches``."""
-    finished: list[dict[str, Any]] = []
+) -> tuple[list[dict[str, Any]], int, int, int]:
+    """Play until ``games`` CSV-finished, or ``max_batches``.
+
+    The jsonl is only a sample (the JVM trace cap). Training uses traced
+    games that also finished. The returned count is CSV-finished games.
+    """
+    train: list[dict[str, Any]] = []
+    finished_n = 0
     played = 0
     batches = 0
-    while len(finished) < games and batches < max_batches:
+    while finished_n < games and batches < max_batches:
         batches += 1
-        need = games - len(finished)
+        need = games - finished_n
         label = f"selfplay-b{batches}"
         meta = play_batch(
             classpath=classpath,
@@ -542,15 +544,21 @@ def collect_finished(
             light="LINEAR",
             max_millis=max_millis,
             max_decisions=max_decisions,
+            write_traces=True,
         )
         if not meta.get("ok"):
             raise RuntimeError(f"self-play jvm failed label={label} exit={meta.get('exit')}")
         played += need
         indexes = csv_finished_indexes(out_dir / f"{label}.csv")
-        got = select_finished(games_from_jsonl(out_dir / f"{label}.jsonl"), indexes)
-        log(f"{label} finished {len(got)}/{need} (csv finished indexes={sorted(indexes)})")
-        finished.extend(got)
-    return finished[:games], played, batches
+        finished_n += len(indexes)
+        trace_path = out_dir / f"{label}.jsonl"
+        traced = select_finished(games_from_jsonl(trace_path), indexes) if trace_path.is_file() else []
+        log(
+            f"{label} csv-finished {len(indexes)}/{need} traced-finished {len(traced)} "
+            f"(indexes={sorted(indexes)})"
+        )
+        train.extend(traced)
+    return train, played, batches, finished_n
 
 
 def measure_seat_csv(csv_path: Path, side: str) -> dict[str, Any]:
@@ -673,20 +681,14 @@ def gate_vs_opponents(
     max_millis: int,
     max_decisions: int,
 ) -> dict[str, Any]:
-    """Candidate LINEAR pack vs Yoda (ADVANCED) and vs the keyword HEURISTIC pack.
+    """Candidate LINEAR pack vs the keyword HEURISTIC AckbarBot only.
 
-    Both seats. The zeros pack is not an opponent. Beginner is not a seat.
-    The keyword weights file is only read.
+    Both seats. No YodaBot/ADVANCED gate. The zeros pack is not an opponent.
+    CSV only: the gate does not write a decision jsonl. The keyword file is only read.
     """
     gate_dir.mkdir(parents=True, exist_ok=True)
     keyword = keyword_weights_path()
     opponents = (
-        {
-            "id": "yoda",
-            "seat": YODA_SEAT,
-            "weights": None,
-            "log": "YodaBot/ADVANCED (AdvancedAi, HallServer ~YodaBot, no weights file)",
-        },
         {
             "id": "keyword",
             "seat": KEYWORD_SEAT,
@@ -715,6 +717,7 @@ def gate_vs_opponents(
                 max_decisions=max_decisions,
                 dark_weights=dark_w,
                 light_weights=light_w,
+                write_traces=False,
             )
             if not meta.get("ok"):
                 return {
@@ -807,7 +810,7 @@ def one_round(
         "promoted": False,
         "promotionRule": PROMOTION_RULE,
     }
-    finished, played, batches = collect_finished(
+    finished, played, batches, csv_finished = collect_finished(
         classpath=classpath,
         weights=champ_path,
         out_dir=round_dir,
@@ -818,8 +821,9 @@ def one_round(
     )
     report["selfPlayPlayed"] = played
     report["selfPlayBatches"] = batches
-    report["selfPlayFinished"] = len(finished)
-    if not finished:
+    report["selfPlayFinished"] = csv_finished
+    report["selfPlayTraced"] = len(finished)
+    if csv_finished <= 0:
         report["skipped"] = "no finished LINEAR vs LINEAR games (maxDecisions/maxMillis skipped)"
         log(f"round {rnd}: no finished self-play games; weights unchanged")
         _write_json(round_dir / "report.json", report)
@@ -855,9 +859,9 @@ def one_round(
         max_decisions=args.max_decisions,
     )
     report["gate"] = meas
-    report["gateOpponents"] = [YODA_SEAT, KEYWORD_SEAT]
+    report["gateOpponents"] = [KEYWORD_SEAT]
     learned = learned_opponent_bar(kept)
-    report["keepMode"] = "not-worse-than-previous-learned" if learned else "beat-yoda-and-keyword"
+    report["keepMode"] = "not-worse-lf-than-keyword" if learned else "lf-above-zero-vs-keyword"
     if not meas.get("ok"):
         report["skipped"] = "gate jvm failed; kept previous champ"
         log(f"round {rnd}: gate failed; kept previous champ")
@@ -867,12 +871,12 @@ def one_round(
     report["promoteDetail"] = detail
     report["comparedToRound"] = kept.get("round")
     if not ok:
-        report["skipped"] = "gate did not clear both opponents on both seats"
+        report["skipped"] = "gate did not clear keyword AckbarBot on both seats (mean LF)"
         log(f"round {rnd}: KEEP previous champ ({detail})")
         _write_json(round_dir / "report.json", report)
         return report
     pack["trainer"]["promoted"] = True
-    pack["trainer"]["gateOpponents"] = [YODA_SEAT, KEYWORD_SEAT]
+    pack["trainer"]["gateOpponents"] = [KEYWORD_SEAT]
     write_pack(cand_path, pack)
     pointer = {
         "schema": "linear-overnight-current.v1",
@@ -946,10 +950,11 @@ def run(argv: list[str] | None = None) -> None:
     )
     log("no shuffle seed; WC96; premiere_anh; self-play LINEAR vs LINEAR same weights file")
     log(
-        "gate vs YodaBot seat=ADVANCED (AdvancedAi, HallServer ~YodaBot, no weights file) "
-        f"and vs keyword pack seat=HEURISTIC weights={keyword}"
+        "gate vs keyword AckbarBot only seat=HEURISTIC "
+        f"weights={keyword}; not a YodaBot/ADVANCED gate"
     )
-    log("zeros pack is not a gate opponent; Beginner is not the bar")
+    log("zeros pack is not a gate opponent; win rate is logged, not a bar; Beginner is not the bar")
+    log("decision jsonl is a sample (traceGames=2, traceDecisions=100) for the update; gate writes CSV only")
     if args.init == "zeros":
         log("ignoring --init zeros; zeros is a smoke file, not the training champ")
     log(PROMOTION_RULE)

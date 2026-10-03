@@ -20,8 +20,10 @@ is a separate subtraction and not a keyword weight.
 
 Hash buckets, the pass flag, integerNorm, indexNorm, and the constant 1 stay
 0. Packed weights, bag weights, and bias stay 0. Each kind weight is the
-AdvancedAi action-table score times the scale. Choice-table scores are a
-second table and are not added, including choice pass = -40.
+AdvancedAi action-table score times the scale. Choice-table scores are their own features after the action-keyword block
+(AdvancedAi CHOICE_WEIGHTS then CHOICE_PENALTIES, scale 1.0 on the seed).
+They are not added onto the action-keyword weights. Card-type and state
+features start at 0. Card names are not weights.
 
 Any non-zero action weight disables the all-zero soft anti-stall prior. The
 once-per-phase hard cap still applies. Scales are gated separately because
@@ -45,6 +47,7 @@ from trainer.improve.linear_selfplay import (
     ACTION_FEAT_DIM,
     AF_BP_BUCKETS,
     AF_BP_HASH,
+    AF_CHOICE,
     AF_INDEX,
     AF_INTEGER,
     AF_KIND,
@@ -53,6 +56,13 @@ from trainer.improve.linear_selfplay import (
     AF_TEXT_BUCKETS,
     AF_TEXT_HASH,
     BAG_HASH_DIM,
+    CARD_CATEGORIES,
+    CARD_SIDES,
+    CARD_SUBTYPES,
+    CARD_TYPES,
+    CHOICE_KEYWORDS,
+    GROUNDED_FACTS,
+    GROUNDED_START,
     KIND_KEYWORDS,
     PACKED_DIM,
     REPO,
@@ -99,8 +109,8 @@ YODA_ACTION_KEYWORDS: tuple[tuple[str, int], ...] = (
     ("revert", -60),
 )
 
-# AdvancedAi.CHOICE_WEIGHTS then CHOICE_PENALTIES. No choice-only features exist
-# in the 24, so these stay unmapped. Choice "pass" is not added onto feature 0.
+# AdvancedAi.CHOICE_WEIGHTS then CHOICE_PENALTIES. Own features at AF_CHOICE.
+# Choice "pass" is not added onto the action-table pass weight or feature 0.
 YODA_CHOICE_KEYWORDS: tuple[tuple[str, int], ...] = (
     ("draw", 60),
     ("retrieve", 45),
@@ -138,6 +148,12 @@ def action_feature_names() -> list[str]:
     names.extend(f"blueprintHash{i}" for i in range(AF_BP_BUCKETS))
     names.append("ones")
     names.extend(f"kind:{name}" for name in KIND_KEYWORDS)
+    names.extend(f"choice:{name}" for name in CHOICE_KEYWORDS)
+    names.extend(f"type:{name}" for name in CARD_TYPES)
+    names.extend(f"subtype:{name}" for name in CARD_SUBTYPES)
+    names.extend(f"category:{name}" for name in CARD_CATEGORIES)
+    names.extend(f"side:{name}" for name in CARD_SIDES)
+    names.extend(GROUNDED_FACTS)
     if len(names) != ACTION_FEAT_DIM:
         raise RuntimeError(f"feature name count {len(names)} != {ACTION_FEAT_DIM}")
     if names[AF_PASS] != "pass" or names[AF_INTEGER] != "integerNorm":
@@ -148,8 +164,12 @@ def action_feature_names() -> list[str]:
         raise RuntimeError("feature order drifted from LinearPolicyAi")
     if names[AF_KIND] != "kind:force drain":
         raise RuntimeError("kind block drifted from LinearPolicyAi")
-    if tuple(name.split(":", 1)[1] for name in names[AF_KIND:]) != KIND_KEYWORDS:
+    if tuple(name.split(":", 1)[1] for name in names[AF_KIND:AF_CHOICE]) != KIND_KEYWORDS:
         raise RuntimeError("kind order drifted")
+    if names[AF_CHOICE] != "choice:draw":
+        raise RuntimeError("choice block drifted")
+    if names[GROUNDED_START] != "type:ADMIRALS_ORDER":
+        raise RuntimeError("grounded block drifted")
     return names
 
 
@@ -165,29 +185,41 @@ def yoda_action_base() -> list[float]:
 
 
 def unmapped_keywords() -> list[dict[str, Any]]:
-    """Keywords with no action feature of the same name.
+    """Action keywords with no kind slot, and choice keywords with no choice slot.
 
-    Choice-table ``pass`` is listed even though the action table mapped
-    ``pass``: there is only one pass feature, and the choice weight is not
-    added to it.
+    Choice-table ``pass`` is mapped to ``choice:pass``, not added onto the
+    action-table pass weight.
     """
+    choice_names = set(CHOICE_KEYWORDS)
     rows: list[dict[str, Any]] = []
-    for table, keywords in (
-        ("action", YODA_ACTION_KEYWORDS),
-        ("choice", YODA_CHOICE_KEYWORDS),
-    ):
-        for keyword, score in keywords:
-            if table == "action" and keyword in ACTION_FEATURE_KEYWORD.values():
-                continue
-            rows.append({"table": table, "keyword": keyword, "score": score})
+    for keyword, score in YODA_ACTION_KEYWORDS:
+        if keyword not in ACTION_FEATURE_KEYWORD.values():
+            rows.append({"table": "action", "keyword": keyword, "score": score})
+    for keyword, score in YODA_CHOICE_KEYWORDS:
+        if keyword not in choice_names:
+            rows.append({"table": "choice", "keyword": keyword, "score": score})
     return rows
+
+
+def seed_action_unscaled() -> list[float]:
+    """Action-table scores on kind slots, choice-table scores on choice slots.
+
+    Grounded type/state slots stay 0. Packed and bag are not in this vector.
+    """
+    weights = yoda_action_base()
+    by_choice = {keyword: float(score) for keyword, score in YODA_CHOICE_KEYWORDS}
+    if tuple(keyword for keyword, _score in YODA_CHOICE_KEYWORDS) != CHOICE_KEYWORDS:
+        raise RuntimeError("choice keyword order drifted from AdvancedAi")
+    for i, name in enumerate(CHOICE_KEYWORDS):
+        weights[AF_CHOICE + i] = by_choice[name]
+    return weights
 
 
 def features_without_keyword() -> list[dict[str, Any]]:
     names = action_feature_names()
     out = []
     for idx, name in enumerate(names):
-        if idx in ACTION_FEATURE_KEYWORD:
+        if idx >= AF_KIND:
             continue
         out.append({"index": idx, "feature": name})
     return out
@@ -210,7 +242,7 @@ def make_seed_pack(scale: float) -> dict[str, Any]:
         raise ValueError("scale must be >= 0")
     pack = make_pack("zeros")
     base = PACKED_DIM + BAG_HASH_DIM
-    aligned = yoda_action_base()
+    aligned = seed_action_unscaled()
     for i, value in enumerate(aligned):
         pack["W"][base + i] = float(value) * float(scale)
     pack["bias"] = 0.0
@@ -246,7 +278,7 @@ def write_seed_packs(seeds_dir: Path) -> list[Path]:
                 "table": "action",
                 "keyword": keyword,
                 "yoda": score,
-                "note": "AdvancedAi action table. Choice-table scores are not added.",
+                "note": "AdvancedAi action table. Choice-table scores are separate features.",
             }
             for i, (keyword, score) in enumerate(YODA_ACTION_KEYWORDS)
         ],
@@ -259,8 +291,9 @@ def write_seed_packs(seeds_dir: Path) -> list[Path]:
         "scales": list(SCALES),
         "policyNote": (
             "Each decision-kind weight is the AdvancedAi action-table score "
-            "times the scale. Packed, bag, pass flag, norms, hashes, and the "
-            "constant 1 stay 0. Choice-table scores are not added. The zeros "
+            "times the scale, and each choice-table weight is the AdvancedAi "
+            "choice score times the scale. Packed, bag, pass flag, norms, hashes, "
+            "the constant 1, and grounded type/state features stay 0. The zeros "
             "soft anti-stall prior is off whenever any weight is non-zero. "
             "The once-per-phase hard cap still applies."
         ),

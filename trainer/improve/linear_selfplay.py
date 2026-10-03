@@ -25,10 +25,14 @@ list, but not the action-feature matrix and not a per-decision advantage.
 When the logged options are complete enough to rebuild the candidate list
 (same action features as ``LinearPolicyAi.actionFeatures``, including Java
 ``String.hashCode`` buckets), this step applies a softmax surrogate of
-REINFORCE on the direct action weights and on the packed and bag-hash
-interaction weights, with the episode return (side win + clipped life-force
-differential) shared by every decision of that seat. The softmax is a
-training surrogate only.
+REINFORCE. The scale on each decision is an advantage, not one game return
+copied onto every choice:
+
+    G = this game's life-force differential for the deciding seat (own - opponent)
+    V(s) = bias + v · packed(s)   # linear value head, ridge least squares on this batch
+    advantage = G - V(packed)
+
+That is not a neural net. The deployed policy stays greedy argmax.
 
 A missing ``bagHash`` is treated as zeros, so those weights do not move.
 With ``packed`` or ``bagHash`` all zeros that interaction gradient is also zero.
@@ -100,8 +104,85 @@ KIND_KEYWORDS = (
     "sacrifice",
     "revert",
 )
-ACTION_FEAT_DIM = AF_KIND + len(KIND_KEYWORDS)
-W_LEN = PACKED_DIM + BAG_HASH_DIM + ACTION_FEAT_DIM  # 128 + 16 + 50
+CHOICE_KEYWORDS = (
+    "draw",
+    "retrieve",
+    "deploy",
+    "battle destiny",
+    "weapon destiny",
+    "activate",
+    "force drain",
+    "initiate",
+    "capture",
+    "steal",
+    "download",
+    "use",
+    "yes",
+    "lose",
+    "forfeit",
+    "lost pile",
+    "used pile",
+    "return to hand",
+    "neither",
+    "cancel",
+    "pass",
+)
+AF_CHOICE = AF_KIND + len(KIND_KEYWORDS)
+# Grounded slots after the choice block. Order matches LinearActionFeatures.java.
+# Card names are not here. Type/subtype/category/side are the Java enums.
+CARD_TYPES = (
+    "ADMIRALS_ORDER", "ALIEN", "CREATURE", "DARK_JEDI_MASTER", "DEFENSIVE_SHIELD",
+    "DEVICE", "DROID", "EFFECT", "EPIC_EVENT", "FIRST_ORDER", "IMPERIAL", "INTERRUPT",
+    "JEDI_MASTER", "JEDI_TEST", "LOCATION", "NEW_REPUBLIC", "OBJECTIVE", "PODRACER",
+    "REBEL", "REPUBLIC", "RESISTANCE", "SITH", "STARSHIP", "VEHICLE", "WEAPON",
+)
+CARD_SUBTYPES = (
+    "NORMAL", "ARTILLERY", "AUTOMATED", "CAPITAL", "CHARACTER", "COMBAT", "CREATURE",
+    "DEATH_STAR", "DEATH_STAR_II", "IMMEDIATE", "LOST", "LOST_OR_STARTING", "MOBILE",
+    "OUT_OF_PLAY", "POLITICAL", "SECTOR", "SHUTTLE", "SITE", "SQUADRON", "STARFIGHTER",
+    "STARSHIP", "STARTING", "SYSTEM", "TRANSPORT", "USED", "USED_OR_LOST",
+    "USED_OR_STARTING", "UTINNI", "VEHICLE",
+)
+CARD_CATEGORIES = (
+    "ADMIRALS_ORDER", "CHARACTER", "CREATURE", "DEFENSIVE_SHIELD", "DEVICE", "EFFECT",
+    "EPIC_EVENT", "GAME_AID", "INTERRUPT", "JEDI_TEST", "LOCATION", "OBJECTIVE",
+    "PODRACER", "STARSHIP", "VEHICLE", "WEAPON",
+)
+CARD_SIDES = ("LIGHT", "DARK")
+GROUNDED_FACTS = (
+    "stat:destiny", "stat:alternateDestiny", "stat:deployCost", "stat:power", "stat:ability",
+    "stat:politics", "stat:forfeit", "stat:armor", "stat:maneuver", "stat:landspeed",
+    "stat:ferocity", "stat:hyperspeed", "stat:specialDefense", "stat:pilotCapacity",
+    "stat:passengerCapacity", "stat:astromechCapacity", "stat:vehicleCapacity",
+    "stat:capitalCapacity", "stat:starfighterCapacity", "stat:parsec",
+    "uniq:unique", "uniq:restricted", "uniq:diamond",
+    "fact:hasPersona", "fact:personaCount", "fact:matchingShip", "fact:presenceIcon",
+    "fact:presenceIconCount", "fact:immuneAttrition", "fact:immuneOpponentObjective",
+    "fact:mayNotBeCanceled", "fact:political", "fact:weaponNeedsPresence",
+    "fact:jediTest1", "fact:jediTest2", "fact:jediTest3", "fact:jediTest4",
+    "fact:jediTest5", "fact:jediTest6", "fact:hasSpecies", "fact:modelTypeCount",
+    "fact:permanentWeapon", "fact:bearerIsCharacter", "fact:atSystemLocation",
+    "fact:hasSystemName", "fact:deploysOrbiting", "fact:combo", "fact:alwaysStolen",
+    "fact:movesLikeCharacter", "fact:movesLikeStarfighter", "fact:deploysLikeStarfighter",
+    "fact:deployBothPiles", "fact:notDeckLimit", "fact:mayNotReserve", "fact:vehicleSlotOk",
+    "fact:personaOnlyOnTable", "fact:doubleSidedFront", "fact:jediTestNotCompleted",
+    "fact:jediTestAttempting", "fact:jediTestCompleted",
+    "flag:textOncePerTurn", "flag:textOncePerBattle", "flag:textMatching", "flag:textImmune",
+    "sit:duringBattle", "sit:myBattlePower", "sit:oppBattlePower", "sit:myAttrition",
+    "sit:oppAttrition", "sit:myBattleCount", "sit:oppBattleCount", "sit:iInitiatedBattle",
+    "sit:damageSegment", "sit:bombingRun", "sit:besieged", "sit:localTrouble",
+    "sit:myBattleDamage", "sit:oppBattleDamage", "sit:duringDrain", "sit:drainTotal",
+    "sit:drainRemaining", "sit:iControlDrainLocation", "sit:myOutOfPlay", "sit:oppOutOfPlay",
+)
+GROUNDED_START = AF_CHOICE + len(CHOICE_KEYWORDS)
+ACTION_FEAT_DIM = (
+    GROUNDED_START + len(CARD_TYPES) + len(CARD_SUBTYPES) + len(CARD_CATEGORIES)
+    + len(CARD_SIDES) + len(GROUNDED_FACTS)
+)
+W_LEN = PACKED_DIM + BAG_HASH_DIM + ACTION_FEAT_DIM  # 128 + 16 + action
+VALUE_RIDGE = 1.0
+TRACE_GAMES = 2
+TRACE_DECISIONS = 100
 INTEGER_ENUM_CAP = 24
 
 DARK_PLAYER = "~OzzelBot"
@@ -119,21 +200,22 @@ REPO = Path("/workspace/gemp-swccg-trainer")
 
 LIMITATION = (
     "Each packed slot i is paired with only one action feature (i mod 23), not a "
-    "full bilinear map, and feature 23 (constant 1) is unpaired. Decision-kind "
-    "indicators (feature 24 on) are direct weights and are trained; they are not "
-    "part of the packed/bag pairing. Bag-hash is paired "
-    "the same way. FEATURES traces log state.bagHash (LinearPolicyAi.bagHash, "
-    "16-d); a missing field is zeros and those weights stay put. "
-    "The update is a softmax surrogate of REINFORCE (the deployed policy is still "
-    "greedy argmax, so this is not the gradient of the policy that plays). The same "
-    "episode return (win + clipped LF differential) is copied onto every aligned "
-    "decision — there is no per-decision advantage. Decisions whose option list is "
-    "truncated or not rebuildable are skipped. If none align, pass/integer/index are "
-    "nudged by the side-split return gap; that nudge is an arbitrary stub, not a "
-    "learned tactic. Not distilled from YodaBot/AdvancedAi. Not promoted."
+    "full bilinear map, and feature 23 (constant 1) is unpaired. Decision-kind, "
+    "choice-table, and grounded card/state features are direct weights. They are "
+    "not part of the packed/bag pairing. Card names are not weights. "
+    "FEATURES traces log state.bagHash (16-d) and, on a small sample of decisions, "
+    "option field nz (non-zero grounded slots from the live game). A missing nz "
+    "leaves those slots 0. "
+    "Advantage for decision i is G_i - V(packed_i), where G_i is that game's "
+    "life-force differential for the deciding seat and V is a linear value head "
+    "(bias + v·packed) fit by ridge least squares on this batch. Not a neural net. "
+    "The softmax is a training surrogate; the deployed policy stays greedy argmax. "
+    "Decisions whose option list is truncated are skipped. If none align, "
+    "pass/integer/index are nudged by the side-split return gap; that nudge is an "
+    "arbitrary stub, not a learned tactic. Not promoted."
 )
 
-UPDATE_REINFORCE = "softmax-surrogate-reinforce-action-packed-and-bag-interaction"
+UPDATE_REINFORCE = "advantage-lf-minus-linear-packed-baseline"
 UPDATE_STUB = "episode-return-stub-pass-integer-index"
 
 
@@ -182,6 +264,31 @@ def action_features(
     for k, keyword in enumerate(KIND_KEYWORDS):
         if keyword in kind_text:
             feat[AF_KIND + k] = 1.0
+    for k, keyword in enumerate(CHOICE_KEYWORDS):
+        if keyword in kind_text:
+            feat[AF_CHOICE + k] = 1.0
+    return feat
+
+
+def apply_nz(feat: list[float], nz: Any) -> list[float]:
+    """Overlay grounded slots logged by the gym (``idx:value`` pairs).
+
+    Text, kind, and choice bits stay as rebuilt. Card-name slots are not a thing.
+    """
+    if not nz:
+        return feat
+    text = str(nz)
+    for part in text.split(","):
+        if ":" not in part:
+            continue
+        idx_s, val_s = part.split(":", 1)
+        try:
+            idx = int(idx_s)
+            val = float(val_s)
+        except ValueError:
+            continue
+        if GROUNDED_START <= idx < len(feat):
+            feat[idx] = val
     return feat
 
 
@@ -462,6 +569,7 @@ def candidates_from_step(step: dict[str, Any]) -> tuple[list[dict[str, Any]], st
             "passed": passed or is_pass_text(text),
             "integer_norm": integer_norm,
             "index_norm": _norm(i, n),
+            "nz": it.get("nz"),
         }
 
     cands: list[dict[str, Any]] = []
@@ -617,10 +725,10 @@ def aligned_decisions(
     chosen = _match_chosen(cands, step.get("chosen"))
     if chosen is None:
         return None
-    feats = [
-        action_features(c["text"], c["blueprint"], c["passed"], c["integer_norm"], c["index_norm"])
-        for c in cands
-    ]
+    feats = []
+    for c in cands:
+        feat = action_features(c["text"], c["blueprint"], c["passed"], c["integer_norm"], c["index_norm"])
+        feats.append(apply_nz(feat, c.get("nz")))
     state = step.get("state") if isinstance(step.get("state"), dict) else {}
     packed = [float(x) for x in state["packed"]]
     bag = _bag_hash_of(state)
@@ -686,6 +794,67 @@ def _side_of(step: dict[str, Any]) -> str | None:
     return None
 
 
+def _solve_linear(matrix: list[list[float]], rhs: list[float]) -> list[float] | None:
+    """Gaussian elimination. None if the ridge system is singular."""
+    n = len(rhs)
+    m = [row[:] + [rhs[i]] for i, row in enumerate(matrix)]
+    for col in range(n):
+        pivot = max(range(col, n), key=lambda r: abs(m[r][col]))
+        if abs(m[pivot][col]) < 1e-12:
+            return None
+        m[col], m[pivot] = m[pivot], m[col]
+        div = m[col][col]
+        for j in range(col, n + 1):
+            m[col][j] /= div
+        for r in range(n):
+            if r == col:
+                continue
+            factor = m[r][col]
+            if factor == 0.0:
+                continue
+            for j in range(col, n + 1):
+                m[r][j] -= factor * m[col][j]
+    return [m[i][n] for i in range(n)]
+
+
+def fit_linear_value(packed_rows: list[list[float]], targets: list[float], ridge: float = VALUE_RIDGE) -> tuple[list[float], float]:
+    """V(s) = bias + v·packed. Ridge on v only. Not a neural net.
+
+    Centered normal equations on this batch:
+        (X_c^T X_c + ridge I) v = X_c^T y_c
+        bias = mean(y) - mean(X)·v
+    """
+    n = len(targets)
+    d = PACKED_DIM
+    if n == 0:
+        return [0.0] * d, 0.0
+    mean_y = sum(targets) / n
+    mean_x = [0.0] * d
+    for row in packed_rows:
+        for i in range(d):
+            mean_x[i] += float(row[i]) / n
+    xtx = [[0.0] * d for _ in range(d)]
+    xty = [0.0] * d
+    for row, y in zip(packed_rows, targets):
+        yc = float(y) - mean_y
+        for i in range(d):
+            xi = float(row[i]) - mean_x[i]
+            if xi == 0.0:
+                continue
+            xty[i] += xi * yc
+            for j in range(i, d):
+                xtx[i][j] += xi * (float(row[j]) - mean_x[j])
+    for i in range(d):
+        for j in range(i):
+            xtx[i][j] = xtx[j][i]
+        xtx[i][i] += ridge
+    solved = _solve_linear(xtx, xty)
+    if solved is None:
+        return [0.0] * d, mean_y
+    bias = mean_y - sum(mean_x[i] * solved[i] for i in range(d))
+    return solved, bias
+
+
 def update_from_games(
     pack: dict[str, Any],
     games: list[dict[str, Any]],
@@ -699,6 +868,7 @@ def update_from_games(
     decisions_skipped = 0
     decisions_with_bag = 0
     delta = [0.0] * W_LEN
+    samples: list[tuple[list[float], list[float], float]] = []
     dark_rewards: list[float] = []
     light_rewards: list[float] = []
     dark_lf: list[float] = []
@@ -728,7 +898,9 @@ def update_from_games(
                 light_rewards.append(reward)
                 if lf_diff is not None:
                     light_lf.append(lf_diff)
-            grads: list[list[float]] = []
+            seat_hit = False
+            if lf_diff is None:
+                continue
             for step in game.get("steps") or []:
                 if _side_of(step) != side:
                     continue
@@ -742,26 +914,37 @@ def update_from_games(
                 feats, packed, bag, chosen = aligned
                 if any(v != 0.0 for v in bag):
                     decisions_with_bag += 1
-                grads.append(_reinforce_grad(feats, packed, bag, chosen, weights))
-            if not grads:
-                continue
-            seat_games += 1
-            decisions_used += len(grads)
-            mean = [0.0] * W_LEN
-            for g in grads:
-                for j in range(W_LEN):
-                    mean[j] += g[j] / len(grads)
-            for j in range(W_LEN):
-                delta[j] += reward * mean[j]
+                # G is this game's life-force result for the seat. The baseline
+                # below subtracts V(packed), so the target is not one number
+                # pasted onto every choice.
+                samples.append((
+                    _reinforce_grad(feats, packed, bag, chosen, weights),
+                    packed,
+                    float(lf_diff),
+                ))
+                seat_hit = True
+            if seat_hit:
+                seat_games += 1
 
     rule = UPDATE_STUB
-    if seat_games:
+    mean_abs_adv = None
+    if samples:
+        decisions_used = len(samples)
+        values, bias = fit_linear_value([packed for _g, packed, _lf in samples], [lf for _g, _p, lf in samples])
+        abs_sum = 0.0
+        for grad, packed, lf in samples:
+            pred = bias + sum(values[i] * float(packed[i]) for i in range(PACKED_DIM))
+            advantage = lf - pred
+            abs_sum += abs(advantage)
+            for j in range(W_LEN):
+                delta[j] += advantage * grad[j]
+        mean_abs_adv = abs_sum / len(samples)
         rule = UPDATE_REINFORCE
         base = PACKED_DIM + BAG_HASH_DIM
         for j in range(W_LEN):
             if j == base + AF_ONES:
                 continue
-            weights[j] += lr * (delta[j] / seat_games)
+            weights[j] += lr * (delta[j] / len(samples))
             if weights[j] > WEIGHT_CLIP:
                 weights[j] = WEIGHT_CLIP
             elif weights[j] < -WEIGHT_CLIP:
@@ -795,6 +978,7 @@ def update_from_games(
         "meanDarkLfDiff": (sum(dark_lf) / len(dark_lf)) if dark_lf else None,
         "meanLightLfDiff": (sum(light_lf) / len(light_lf)) if light_lf else None,
         "lr": lr,
+        "meanAbsAdvantage": mean_abs_adv,
         "promoted": False,
         "decisionsWithBagHash": decisions_with_bag,
         "bagWeightsNonzero": sum(1 for v in weights[PACKED_DIM:PACKED_DIM + BAG_HASH_DIM] if v != 0.0),
@@ -932,6 +1116,9 @@ def run_live_batch(
     max_decisions: int,
     dark_weights: Path | None = None,
     light_weights: Path | None = None,
+    write_traces: bool = True,
+    trace_games: int = TRACE_GAMES,
+    trace_decisions: int = TRACE_DECISIONS,
 ) -> dict[str, Any]:
     """One JVM batch. No shuffle seed is passed. FEATURES traces via -D."""
     csv_path.parent.mkdir(parents=True, exist_ok=True)
@@ -949,14 +1136,21 @@ def run_live_batch(
         *linear_weight_cli(weights, dark_weights, light_weights),
         "--decks=wc96",
         "--format=premiere_anh",
-        "--traces",
-        f"--tracesPath={traces_path.resolve()}",
         "--no-replay",
         "--quiet",
         f"--maxMillis={max_millis}",
         f"--maxDecisions={max_decisions}",
         f"--csv={csv_path.resolve()}",
     ]
+    if write_traces:
+        cmd.extend([
+            "--traces",
+            f"--tracesPath={traces_path.resolve()}",
+            f"--traceGames={trace_games}",
+            f"--traceDecisions={trace_decisions}",
+        ])
+    else:
+        cmd.append("--no-traces")
     timeout = max(60, int(games * (max_millis / 1000.0) + 90))
     proc = subprocess.run(
         cmd,
@@ -972,7 +1166,7 @@ def run_live_batch(
         "csv": str(csv_path),
         "traces": str(traces_path),
         "log": str(log_path),
-        "ok": proc.returncode in (0, 2) and csv_path.is_file() and traces_path.is_file(),
+        "ok": proc.returncode in (0, 2) and csv_path.is_file() and (not write_traces or traces_path.is_file()),
     }
 
 
