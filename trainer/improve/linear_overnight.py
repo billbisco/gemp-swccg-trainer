@@ -1,9 +1,9 @@
 """Overnight LINEAR vs LINEAR self-play loop for AckbarBot.
 
 Uses ``trainer.improve.linear_selfplay`` for the pack, the gym batch, and the
-update. That module already plays LINEAR vs LINEAR (same ``--linear-weights``
-file on both seats). This loop is the unattended part: many rounds, random
-shuffles, a Beginner gate, and a training-champ pointer.
+update. Self-play is LINEAR vs LINEAR with one ``--linear-weights`` file on
+both seats. This loop is the unattended part: many rounds, random shuffles,
+a head-to-head gate, and a training-champ pointer.
 
 What it does not do
 -------------------
@@ -12,15 +12,18 @@ What it does not do
 * Does not write under ``champs/`` and never touches
   ``champs/_promoted/heuristic-v1-wc96-r08-blend-adv25``.
 * Does not pass a gym shuffle seed. Strength numbers are not from a fixed seed.
+* Does not gate against BEGINNER.
 
 Promotion
 ---------
-After each self-play update, the candidate plays BEGINNER on both seats.
-It replaces the training champ only when BOTH seats are not worse than the
-previous kept pack (or the stored baseline) on win rate AND on mean
-life-force differential. Equality is not worse. A missing seat or metric
-does not promote. The pointer is ``runs/linear-overnight/CURRENT.json``
-plus ``current.linear.json``.
+After each self-play update, the candidate plays the previous kept AckbarBot
+linear pack (``current.linear.json`` before the swap). Candidate Dark vs kept
+Light, then candidate Light vs kept Dark. Different packs use
+``--dark-weights`` / ``--light-weights``. WC96, premiere_anh, no shuffle seed.
+It replaces the training champ only when BOTH seats are not worse than an
+even split: win rate >= 0.5 and mean life-force differential >= 0. Equality
+is not worse. A missing seat or metric does not promote. The pointer is
+``runs/linear-overnight/CURRENT.json`` plus ``current.linear.json``.
 """
 from __future__ import annotations
 
@@ -38,8 +41,6 @@ from trainer.improve.linear_selfplay import (
     DARK_PLAYER,
     LIGHT_PLAYER,
     REPO,
-    _concat_csv,
-    candidate_measurement,
     find_classpath,
     games_from_jsonl,
     load_pack,
@@ -50,12 +51,21 @@ from trainer.improve.linear_selfplay import (
 )
 
 PROMOTION_RULE = (
-    "Promote to the training champ only when both seats (Dark and Light vs BEGINNER) "
-    "are not worse than the previous kept pack on win rate AND on mean life-force "
-    "differential. Equality counts as not worse. A missing seat or metric does not "
-    "promote. Unfinished maxDecisions/maxMillis games are skipped. "
-    "Never writes champs/_promoted."
+    "Promote to the training champ only when the candidate is not worse than the "
+    "previous kept AckbarBot linear pack head-to-head on both seats "
+    "(candidate Dark vs kept Light, and candidate Light vs kept Dark), "
+    "WC96 premiere_anh, no shuffle seed. Not worse means win rate >= 0.5 AND "
+    "mean life-force differential >= 0 on each seat. Equality counts as not worse. "
+    "A missing seat or metric does not promote. Unfinished maxDecisions/maxMillis "
+    "games are skipped. No Beginner opponent. Never writes champs/_promoted."
 )
+
+# Head-to-head bar. The kept pack is the opponent, so "not worse than the kept
+# pack" is an even split, not the kept pack's older gate numbers.
+EVEN_BAR = {
+    "asDark": {"winRate": 0.5, "meanLfDiff": 0.0},
+    "asLight": {"winRate": 0.5, "meanLfDiff": 0.0},
+}
 
 CHAMPS = REPO / "champs"
 FORBIDDEN = CHAMPS / "_promoted"
@@ -208,11 +218,17 @@ def play_batch(
     light: str,
     max_millis: int,
     max_decisions: int,
+    dark_weights: Path | None = None,
+    light_weights: Path | None = None,
 ) -> dict[str, Any]:
+    dark_w = dark_weights or weights
+    light_w = light_weights or weights
+    same = dark_w.resolve() == light_w.resolve()
+    wdesc = dark_w.name if same else f"dark={dark_w.name} light={light_w.name}"
     log(
         f"play {label} games={games} dark={dark} light={light} "
         f"decks=wc96 format=premiere_anh maxDecisions={max_decisions} "
-        f"maxMillis={max_millis} seed=NONE weights={weights.name}"
+        f"maxMillis={max_millis} seed=NONE weights={wdesc}"
     )
     meta = run_live_batch(
         classpath=classpath,
@@ -225,6 +241,8 @@ def play_batch(
         log_path=out_dir / f"{label}.log",
         max_millis=max_millis,
         max_decisions=max_decisions,
+        dark_weights=dark_weights,
+        light_weights=light_weights,
     )
     log(f"play {label} exit={meta.get('exit')} ok={meta.get('ok')}")
     return meta
@@ -269,75 +287,161 @@ def collect_finished(
     return finished[:games], played, batches
 
 
-def gate_vs_beginner(
+def measure_seat_csv(csv_path: Path, side: str) -> dict[str, Any]:
+    """Score one side of a finished gym CSV.
+
+    ``side`` is ``DARK`` or ``LIGHT``. Rows with an error (including
+    maxDecisions / maxMillis) or without a real winner are skipped. Life-force
+    differential is that side's life force minus the other side's.
+    """
+    if side not in ("DARK", "LIGHT"):
+        raise ValueError(f"side must be DARK or LIGHT, got {side!r}")
+    player = DARK_PLAYER if side == "DARK" else LIGHT_PLAYER
+    games = 0
+    wins = 0
+    lf_sum = 0.0
+    lf_n = 0
+    if csv_path.is_file():
+        with csv_path.open(encoding="utf-8", newline="") as handle:
+            for row in csv.DictReader(handle):
+                if (row.get("error") or "").strip():
+                    continue
+                if (row.get("winner") or "") not in (DARK_PLAYER, LIGHT_PLAYER):
+                    continue
+                games += 1
+                wins += int(row.get("winner") == player)
+                try:
+                    dlf = int(row["darkLifeForce"])
+                    llf = int(row["lightLifeForce"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if dlf < 0 or llf < 0:
+                    continue
+                lf_sum += float(dlf - llf) if side == "DARK" else float(llf - dlf)
+                lf_n += 1
+    return {
+        "games": games,
+        "wins": wins,
+        "winRate": (wins / games) if games else None,
+        "meanLfDiff": (lf_sum / lf_n) if lf_n else None,
+    }
+
+
+def gate_vs_kept(
     *,
     classpath: str,
-    weights: Path,
+    cand_weights: Path,
+    kept_weights: Path,
     gate_dir: Path,
     per_seat: int,
     max_millis: int,
     max_decisions: int,
 ) -> dict[str, Any]:
+    """Candidate LINEAR pack vs the previous kept LINEAR pack, both seats.
+
+    No Beginner. Each seat is a separate batch so the two packs stay on
+    ``--dark-weights`` / ``--light-weights``.
+    """
     gate_dir.mkdir(parents=True, exist_ok=True)
-    csvs: list[Path] = []
-    for dark, light, label in (
-        ("LINEAR", "BEGINNER", "as-dark"),
-        ("BEGINNER", "LINEAR", "as-light"),
-    ):
+    # (label, candidate side, dark weights, light weights)
+    seats = (
+        ("as-dark", "DARK", cand_weights, kept_weights),
+        ("as-light", "LIGHT", kept_weights, cand_weights),
+    )
+    measured: dict[str, dict[str, Any]] = {}
+    for label, side, dark_w, light_w in seats:
         meta = play_batch(
             classpath=classpath,
-            weights=weights,
+            weights=cand_weights,
             out_dir=gate_dir,
             label=label,
             games=per_seat,
-            dark=dark,
-            light=light,
+            dark="LINEAR",
+            light="LINEAR",
             max_millis=max_millis,
             max_decisions=max_decisions,
+            dark_weights=dark_w,
+            light_weights=light_w,
         )
         if not meta.get("ok"):
-            return {"ok": False, "label": label, "exit": meta.get("exit")}
-        csvs.append(gate_dir / f"{label}.csv")
-    _concat_csv(csvs, gate_dir / "games.csv")
-    meas = candidate_measurement(gate_dir / "games.csv")
-    meas["ok"] = True
+            return {"ok": False, "label": label, "exit": meta.get("exit"), "opponent": "previous-kept-linear"}
+        measured[side] = measure_seat_csv(gate_dir / f"{label}.csv", side)
+    as_dark = measured["DARK"]
+    as_light = measured["LIGHT"]
+    games = as_dark["games"] + as_light["games"]
+    wins = as_dark["wins"] + as_light["wins"]
+    lf_parts = []
+    for seat in (as_dark, as_light):
+        if seat["meanLfDiff"] is not None and seat["games"]:
+            lf_parts.append((seat["meanLfDiff"], seat["games"]))
+    mean_lf = None
+    if lf_parts:
+        mean_lf = sum(m * n for m, n in lf_parts) / sum(n for _, n in lf_parts)
+    meas = {
+        "ok": True,
+        "opponent": "previous-kept-linear",
+        "candidateWeights": cand_weights.name,
+        "keptWeights": kept_weights.name,
+        "candidateGames": games,
+        "candidateWins": wins,
+        "candidateWinRate": (wins / games) if games else None,
+        "meanCandidateLfDiff": mean_lf,
+        "asDark": as_dark,
+        "asLight": as_light,
+    }
     log(
-        "gate LINEAR vs BEGINNER "
+        "gate LINEAR vs previous kept LINEAR "
         f"pooled WR={meas.get('candidateWinRate')} "
         f"meanLF={meas.get('meanCandidateLfDiff')} "
-        f"dark={meas.get('asDark')} light={meas.get('asLight')}"
+        f"dark={as_dark} light={as_light}"
     )
     return meas
 
 
 def run_baseline(args: argparse.Namespace, classpath: str, out_dir: Path) -> dict[str, Any]:
+    """Write an initial pack. No Beginner games. The first gate is a later candidate vs this file."""
+    del classpath  # baseline does not play
     pack = make_pack(args.init)
     baseline_weights = out_dir / "baseline.linear.json"
     write_pack(baseline_weights, pack)
-    log(f"baseline init={args.init} -> {baseline_weights.name}")
-    meas = gate_vs_beginner(
-        classpath=classpath,
-        weights=baseline_weights,
-        gate_dir=out_dir / "baseline-gate",
-        per_seat=args.gate_per_seat,
-        max_millis=args.max_millis,
-        max_decisions=args.max_decisions,
-    )
-    if not meas.get("ok"):
-        raise RuntimeError(f"baseline gate failed: {meas}")
+    log(f"baseline init={args.init} -> {baseline_weights.name} (no Beginner gate)")
     pointer = {
         "schema": "linear-overnight-current.v1",
         "role": "baseline",
         "round": 0,
         "init": args.init,
         "promoted": False,
-        "metrics": meas,
+        "metrics": None,
         "comparedTo": None,
-        "note": "Stored baseline (initial pack vs BEGINNER, both seats). Training champ until a candidate is not worse on both seats.",
+        "note": (
+            "Initial linear pack. No Beginner gate. A candidate promotes only when "
+            "it is not worse than this pack head-to-head on both seats."
+        ),
     }
     write_pointer(out_dir, baseline_weights, pointer)
     log("wrote baseline CURRENT.json")
     return json.loads((out_dir / "CURRENT.json").read_text(encoding="utf-8"))
+
+
+def kept_pack_status(out_dir: Path) -> tuple[dict[str, Any] | None, str]:
+    """Load the previous kept pack. Weights must be a usable linear.v1 file."""
+    current_path = out_dir / "CURRENT.json"
+    weights_path = out_dir / "current.linear.json"
+    if not weights_path.is_file():
+        return None, "no current.linear.json"
+    try:
+        load_pack(weights_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return None, f"unusable current.linear.json: {exc}"
+    if not current_path.is_file():
+        return {"round": 0, "role": "baseline", "metrics": None}, "weights only"
+    try:
+        kept = json.loads(current_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"round": 0, "role": "baseline", "metrics": None}, f"weights ok, CURRENT.json unusable ({exc})"
+    if not isinstance(kept, dict):
+        return {"round": 0, "role": "baseline", "metrics": None}, "weights ok, CURRENT.json not an object"
+    return kept, "ok"
 
 
 def one_round(
@@ -397,21 +501,24 @@ def one_round(
         f"finished={len(finished)} decisionsUsed={stats['decisionsUsed']} "
         f"skipped={stats['decisionsSkipped']}"
     )
-    meas = gate_vs_beginner(
+    kept_weights = out_dir / "current.linear.json"
+    meas = gate_vs_kept(
         classpath=classpath,
-        weights=cand_path,
+        cand_weights=cand_path,
+        kept_weights=kept_weights,
         gate_dir=round_dir / "gate",
         per_seat=args.gate_per_seat,
         max_millis=args.max_millis,
         max_decisions=args.max_decisions,
     )
     report["gate"] = meas
+    report["gateOpponent"] = str(kept_weights)
     if not meas.get("ok"):
         report["skipped"] = "gate jvm failed; kept previous champ"
         log(f"round {rnd}: gate failed; kept previous champ")
         _write_json(round_dir / "report.json", report)
         return report
-    ok, detail = should_promote(meas, kept.get("metrics") or {}, min_games)
+    ok, detail = should_promote(meas, EVEN_BAR, min_games)
     report["promoteDetail"] = detail
     report["comparedToRound"] = kept.get("round")
     if not ok:
@@ -476,18 +583,27 @@ def run(argv: list[str] | None = None) -> None:
         f"gatePerSeat={args.gate_per_seat} maxDecisions={args.max_decisions} "
         f"init={args.init} pid={os.getpid()} out={out_dir}"
     )
-    log("no shuffle seed; WC96; premiere_anh; LINEAR vs LINEAR same weights")
+    log("no shuffle seed; WC96; premiere_anh; self-play LINEAR vs LINEAR same weights file")
+    log("gate opponent: previous kept AckbarBot linear pack, both seats; no Beginner")
     log(PROMOTION_RULE)
 
     current_path = out_dir / "CURRENT.json"
-    weights_path = out_dir / "current.linear.json"
-    if args.fresh or not (current_path.is_file() and weights_path.is_file()):
+    if args.fresh:
         kept = run_baseline(args, classpath, out_dir)
         start_round = 1
     else:
-        kept = json.loads(current_path.read_text(encoding="utf-8"))
-        start_round = int(kept.get("round") or 0) + 1
-        log(f"resume from round {kept.get('round')} role={kept.get('role')} next={start_round}")
+        kept, status = kept_pack_status(out_dir)
+        if kept is None:
+            log(f"no usable CURRENT pack ({status}); starting from init={args.init}")
+            kept = run_baseline(args, classpath, out_dir)
+            start_round = 1
+        else:
+            start_round = int(kept.get("round") or 0) + 1
+            log(
+                f"resume from round {kept.get('round')} role={kept.get('role')} "
+                f"next={start_round} status={status} weights=current.linear.json "
+                f"(stored metrics are not the gate bar)"
+            )
 
     consecutive_failures = 0
     for rnd in range(start_round, args.rounds + 1):

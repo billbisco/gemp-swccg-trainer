@@ -855,6 +855,23 @@ def find_classpath(explicit: Path | None = None) -> str | None:
     return text or None
 
 
+def linear_weight_cli(
+    weights: Path,
+    dark_weights: Path | None = None,
+    light_weights: Path | None = None,
+) -> list[str]:
+    """JVM weight flags. One file uses ``--linear-weights`` (both seats).
+
+    Two files use ``--dark-weights`` and ``--light-weights`` so a gate can
+    play a candidate pack against a different kept pack. No shuffle seed.
+    """
+    dark_w = (dark_weights or weights).resolve()
+    light_w = (light_weights or weights).resolve()
+    if dark_w == light_w:
+        return [f"--linear-weights={dark_w}"]
+    return [f"--dark-weights={dark_w}", f"--light-weights={light_w}"]
+
+
 def run_live_batch(
     *,
     classpath: str,
@@ -867,6 +884,8 @@ def run_live_batch(
     log_path: Path,
     max_millis: int,
     max_decisions: int,
+    dark_weights: Path | None = None,
+    light_weights: Path | None = None,
 ) -> dict[str, Any]:
     """One JVM batch. No shuffle seed is passed. FEATURES traces via -D."""
     csv_path.parent.mkdir(parents=True, exist_ok=True)
@@ -881,7 +900,7 @@ def run_live_batch(
         f"--games={games}",
         f"--dark={dark}",
         f"--light={light}",
-        f"--linear-weights={weights.resolve()}",
+        *linear_weight_cli(weights, dark_weights, light_weights),
         "--decks=wc96",
         "--format=premiere_anh",
         "--traces",

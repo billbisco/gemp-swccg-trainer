@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Unattended LINEAR vs LINEAR overnight loop.
-# Does not set a shuffle seed. Does not write champs/_promoted.
+# Self-play uses one weights file on both seats. The promotion gate plays the
+# candidate against the previous kept AckbarBot linear pack (both seats).
+# No Beginner opponent. Does not set a shuffle seed. Does not write champs/_promoted.
+# --init is used only when current.linear.json is missing or unusable.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p runs/linear-overnight
