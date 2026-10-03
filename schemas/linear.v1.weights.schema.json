@@ -4,24 +4,49 @@
   "title": "linear.v1 weights",
   "description": "Gym-cli LinearPolicyAi pack (not Hall). Score is bias + direct actionFeat weights + packed[i]*actionFeat[i mod 23]*W[i] (and the same pairing for each bag-hash slot). Greedy argmax. Zeros W is a legal stub and still triggers the gym anti-stall prior. Do not distill W from YodaBot/AdvancedAi. Training loop is not this file.",
   "type": "object",
-  "required": ["schema", "featureSchemaVersion", "packedDim", "bagHashDim", "actionFeatDim", "bias", "W"],
+  "required": [
+    "schema",
+    "featureSchemaVersion",
+    "packedDim",
+    "bagHashDim",
+    "actionFeatDim",
+    "bias",
+    "W"
+  ],
   "properties": {
-    "schema": { "type": "string", "const": "linear.v1" },
-    "featureSchemaVersion": { "type": "integer", "const": 1 },
-    "packedDim": { "type": "integer", "const": 128 },
-    "bagHashDim": { "type": "integer", "minimum": 0, "maximum": 64 },
+    "schema": {
+      "type": "string",
+      "const": "linear.v1"
+    },
+    "featureSchemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "packedDim": {
+      "type": "integer",
+      "const": 211
+    },
+    "bagHashDim": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 64
+    },
     "actionFeatDim": {
       "type": "integer",
       "const": 227,
       "description": "0 pass, 1 integerNorm, 2 indexNorm, 3-18 text hash, 19-22 blueprint hash, 23 ones, 24-49 action-keyword kinds, 50-70 choice-table kinds, then grounded card type/subtype/category/side and state facts. Matches com.gempukku.swccgo.ai.models.LinearPolicyAi.ACTION_FEAT_DIM. Not one weight per card name."
     },
-    "bias": { "type": "number" },
+    "bias": {
+      "type": "number"
+    },
     "W": {
       "type": "array",
-      "minItems": 355,
-      "maxItems": 419,
-      "items": { "type": "number" },
-      "description": "Length must be packedDim + bagHashDim + actionFeatDim (355 when bagHashDim is 0, 371 when bagHashDim is 16, 419 when bagHashDim is 64). Prefix slots are state×action interactions, not a constant added to every action. The last actionFeatDim entries are direct action weights."
+      "minItems": 438,
+      "maxItems": 502,
+      "items": {
+        "type": "number"
+      },
+      "description": "Length must be packedDim + bagHashDim + actionFeatDim (438 when bagHashDim is 0, 454 when bagHashDim is 16, 502 when bagHashDim is 64). Prefix slots are state\u00d7action interactions. New packed slots are inserted after the original 128 and before the bag-hash weights, zero until trained. The last actionFeatDim entries are direct action weights. Not one weight per card name."
     }
   },
   "additionalProperties": true

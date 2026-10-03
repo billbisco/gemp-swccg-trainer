@@ -60,7 +60,7 @@ from typing import Any
 
 SCHEMA = "linear.v1"
 FEATURE_SCHEMA_VERSION = 1
-PACKED_DIM = 128
+PACKED_DIM = 211  # FeatureLayoutV1: original 128 plus appended table facts
 BAG_HASH_DIM = 16  # LinearPolicyAi.DEFAULT_BAG_HASH_DIM / zeros()
 AF_PASS = 0
 AF_INTEGER = 1
@@ -179,7 +179,7 @@ ACTION_FEAT_DIM = (
     GROUNDED_START + len(CARD_TYPES) + len(CARD_SUBTYPES) + len(CARD_CATEGORIES)
     + len(CARD_SIDES) + len(GROUNDED_FACTS)
 )
-W_LEN = PACKED_DIM + BAG_HASH_DIM + ACTION_FEAT_DIM  # 128 + 16 + action
+W_LEN = PACKED_DIM + BAG_HASH_DIM + ACTION_FEAT_DIM  # 211 + 16 + action
 VALUE_RIDGE = 1.0
 TRACE_GAMES = 2
 TRACE_DECISIONS = 100
@@ -395,7 +395,7 @@ def pack_weights(pack: dict[str, Any]) -> list[float]:
     if pack.get("schema") != SCHEMA:
         raise ValueError("schema must be linear.v1")
     if int(pack.get("packedDim", -1)) != PACKED_DIM:
-        raise ValueError("packedDim must be 128")
+        raise ValueError(f"packedDim must be {PACKED_DIM}")
     if int(pack.get("bagHashDim", -1)) != BAG_HASH_DIM:
         raise ValueError("bagHashDim must be 16 for this trainer")
     if int(pack.get("actionFeatDim", -1)) != ACTION_FEAT_DIM:
@@ -755,11 +755,88 @@ def _bag_hash_of(state: dict[str, Any]) -> list[float]:
     return out
 
 
+# A cap is a loss for the seat that was deciding. The life-force result is
+# fixed (0 vs LF_SCALE), not the board's LF and not a function of elapsed
+# time or how many decisions were left. Finishing sooner is not a reward.
+STALL_LOSER_LF = 0
+STALL_WINNER_LF = int(LF_SCALE)
+
+
+def is_cap_stop(text: str | None) -> bool:
+    raw = text or ""
+    return "maxDecisions" in raw or "maxMillis" in raw
+
+
+def stall_outcome(outcome: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Score a maxDecisions/maxMillis stop as a loss for the deciding seat.
+
+    Returns a copy with winner and life force replaced, or None when this is
+    not a cap or the deciding seat is not exactly one of the two players.
+    Does not read elapsed time or decision counts.
+    """
+    if not isinstance(outcome, dict):
+        return None
+    stopper = str(outcome.get("stopper") or outcome.get("error") or "")
+    if not is_cap_stop(stopper):
+        return None
+    decider = str(outcome.get("decidingPlayer") or "").strip()
+    if decider == DARK_PLAYER:
+        winner = LIGHT_PLAYER
+        dlf, llf = STALL_LOSER_LF, STALL_WINNER_LF
+    elif decider == LIGHT_PLAYER:
+        winner = DARK_PLAYER
+        dlf, llf = STALL_WINNER_LF, STALL_LOSER_LF
+    else:
+        return None
+    scored = dict(outcome)
+    scored["finished"] = True
+    scored["cancelled"] = False
+    scored["winner"] = winner
+    scored["darkLifeForce"] = dlf
+    scored["lightLifeForce"] = llf
+    scored["darkLF"] = dlf
+    scored["lightLF"] = llf
+    scored["stallScored"] = True
+    return scored
+
+
+def score_csv_row(row: dict[str, Any]) -> tuple[str, int, int] | None:
+    """Winner and life force for one gym CSV row.
+
+    Cap rows need decidingPlayer. They use the fixed stall life force, not
+    the raw darkLifeForce/lightLifeForce cells and not elapsedMs.
+    Other error rows are dropped. A normal finish uses the real life force.
+    """
+    err = (row.get("error") or "").strip()
+    if is_cap_stop(err):
+        scored = stall_outcome({
+            "stopper": err,
+            "decidingPlayer": row.get("decidingPlayer") or "",
+        })
+        if scored is None:
+            return None
+        return str(scored["winner"]), int(scored["darkLifeForce"]), int(scored["lightLifeForce"])
+    if err:
+        return None
+    winner = row.get("winner") or ""
+    if winner not in (DARK_PLAYER, LIGHT_PLAYER):
+        return None
+    try:
+        dlf = int(row["darkLifeForce"])
+        llf = int(row["lightLifeForce"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if dlf < 0 or llf < 0:
+        return None
+    return str(winner), dlf, llf
+
+
 def seat_return(side: str, outcome: dict[str, Any]) -> tuple[float, float | None, float]:
     """Return (reward, lf_diff_from_seat, win_term).
 
     reward = win (+1/-1/0) + LF_MIX * clip((ownLF-oppLF)/30, -1, 1).
     Unfinished / missing LF contributes no life-force term.
+    A cap scored by stall_outcome already carries the fixed bad life force.
     """
     winner = str(outcome.get("winner") or "")
     if winner == DARK_PLAYER:
@@ -879,6 +956,9 @@ def update_from_games(
 
     for game in games:
         outcome = game.get("outcome") or {}
+        scored = stall_outcome(outcome)
+        if scored is not None:
+            outcome = scored
         winner = str(outcome.get("winner") or "")
         if outcome.get("finished") is False or winner not in (DARK_PLAYER, LIGHT_PLAYER):
             continue
@@ -1013,7 +1093,7 @@ def synthetic_games(n: int = 4) -> list[dict[str, Any]]:
     """Tiny fixture so the update math runs without the JVM.
 
     Dark plays a non-pass action and wins; Light plays Pass and loses.
-    These are not SWCCG games. Packed is zeros of length 128 so the
+    These are not SWCCG games. Packed is zeros of PACKED_DIM so the
     FEATURES gate (packed present) is satisfied. Life force is invented.
     """
     packed = [0.0] * PACKED_DIM

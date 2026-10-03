@@ -23,7 +23,9 @@ not YodaBot/``ADVANCED``, and not Beginner.
 
 A candidate is kept only when its mean life-force differential is not worse
 than that previous pack on both seats. Equality counts. Win rate is logged,
-not a bar. Unfinished maxDecisions/maxMillis games do not count. At least
+not a bar. A maxDecisions or maxMillis game counts as a loss for the seat
+that was deciding, with a fixed bad life-force result (0 vs 30), not a
+reward for finishing faster. At least
 2 finished games per seat. The pointer is
 ``runs/linear-overnight/CURRENT.json`` plus ``current.linear.json``.
 A learned pack already on disk is not reset and is not re-seeded from Yoda.
@@ -55,6 +57,8 @@ from trainer.improve.linear_selfplay import (
     make_pack,
     pack_weights,
     run_live_batch,
+    score_csv_row,
+    stall_outcome,
     update_from_games,
     write_pack,
 )
@@ -67,7 +71,8 @@ PROMOTION_RULE = (
     "Equality on life force counts as not worse. Win rate is logged, not a bar. "
     "There is no YodaBot/ADVANCED gate and no HEURISTIC gate. "
     "The zeros pack is not a gate opponent. Beginner is never the bar. "
-    "Unfinished maxDecisions/maxMillis games do not count. At least "
+    "A maxDecisions or maxMillis game is a loss for the deciding seat with "
+    "fixed life force 0 vs 30. Speed is not a reward. At least "
     "2 finished games per seat are required. Self-play is LINEAR vs LINEAR, WC96, "
     "premiere_anh, no shuffle seed. Never writes champs/_promoted. "
     "Do not reset current.linear.json and do not re-seed from Yoda while a learned pack is kept."
@@ -150,20 +155,18 @@ def acquire_pid(pid_path: Path) -> None:
 
 
 def csv_finished_indexes(csv_path: Path) -> set[int]:
-    """Game indexes whose CSV row finished with a real winner and no error.
+    """Game indexes that count for training.
 
-    maxDecisions / maxMillis stops are written as the error cell. Those rows
-    are not training games.
+    A normal finish has a real winner and no error. A maxDecisions or
+    maxMillis row counts when decidingPlayer names one seat. The score is
+    applied later; this only decides which rows are kept. Other errors drop.
     """
     found: set[int] = set()
     if not csv_path.is_file():
         return found
     with csv_path.open(encoding="utf-8", newline="") as handle:
         for row in csv.DictReader(handle):
-            if (row.get("error") or "").strip():
-                continue
-            winner = row.get("winner") or ""
-            if winner not in (DARK_PLAYER, LIGHT_PLAYER):
+            if score_csv_row(row) is None:
                 continue
             try:
                 found.add(int(row["gameIndex"]))
@@ -173,14 +176,18 @@ def csv_finished_indexes(csv_path: Path) -> set[int]:
 
 
 def select_finished(games: list[dict[str, Any]], indexes: set[int]) -> list[dict[str, Any]]:
-    """Keep games that both the trace outcome and the CSV call finished."""
+    """Keep games the CSV counted, including scored decision/time caps.
+
+    A cap is rewritten to a loss for decidingPlayer with fixed life force
+    0 vs 30. Games without that seat, and other unfinished games, drop.
+    """
     kept: list[dict[str, Any]] = []
     for game in games:
-        outcome = game.get("outcome") or {}
-        if outcome.get("finished") is False or outcome.get("cancelled") is True:
-            continue
-        stopper = str(outcome.get("stopper") or "")
-        if "maxDecisions" in stopper or "maxMillis" in stopper:
+        outcome = dict(game.get("outcome") or {})
+        scored = stall_outcome(outcome)
+        if scored is not None:
+            outcome = scored
+        elif outcome.get("finished") is False or outcome.get("cancelled") is True:
             continue
         winner = str(outcome.get("winner") or "")
         if winner not in (DARK_PLAYER, LIGHT_PLAYER):
@@ -191,7 +198,9 @@ def select_finished(games: list[dict[str, Any]], indexes: set[int]) -> list[dict
             continue
         if idx not in indexes:
             continue
-        kept.append(game)
+        copied = dict(game)
+        copied["outcome"] = outcome
+        kept.append(copied)
     return kept
 
 
@@ -559,11 +568,12 @@ def collect_finished(
 
 
 def measure_seat_csv(csv_path: Path, side: str) -> dict[str, Any]:
-    """Score one side of a finished gym CSV.
+    """Score one side of a gym CSV.
 
-    ``side`` is ``DARK`` or ``LIGHT``. Rows with an error (including
-    maxDecisions / maxMillis) or without a real winner are skipped. Life-force
-    differential is that side's life force minus the other side's.
+    ``side`` is ``DARK`` or ``LIGHT``. A maxDecisions or maxMillis row is a
+    loss for decidingPlayer with fixed life force 0 vs 30. That margin does
+    not use the raw life-force cells or elapsedMs. Other errors are skipped.
+    Life-force differential is that side's scored life force minus the other.
     """
     if side not in ("DARK", "LIGHT"):
         raise ValueError(f"side must be DARK or LIGHT, got {side!r}")
@@ -575,19 +585,12 @@ def measure_seat_csv(csv_path: Path, side: str) -> dict[str, Any]:
     if csv_path.is_file():
         with csv_path.open(encoding="utf-8", newline="") as handle:
             for row in csv.DictReader(handle):
-                if (row.get("error") or "").strip():
+                scored = score_csv_row(row)
+                if scored is None:
                     continue
-                if (row.get("winner") or "") not in (DARK_PLAYER, LIGHT_PLAYER):
-                    continue
+                winner, dlf, llf = scored
                 games += 1
-                wins += int(row.get("winner") == player)
-                try:
-                    dlf = int(row["darkLifeForce"])
-                    llf = int(row["lightLifeForce"])
-                except (KeyError, TypeError, ValueError):
-                    continue
-                if dlf < 0 or llf < 0:
-                    continue
+                wins += int(winner == player)
                 lf_sum += float(dlf - llf) if side == "DARK" else float(llf - dlf)
                 lf_n += 1
     return {
@@ -824,7 +827,7 @@ def one_round(
     report["selfPlayFinished"] = csv_finished
     report["selfPlayTraced"] = len(finished)
     if csv_finished <= 0:
-        report["skipped"] = "no finished LINEAR vs LINEAR games (maxDecisions/maxMillis skipped)"
+        report["skipped"] = "no scored LINEAR vs LINEAR games"
         log(f"round {rnd}: no finished self-play games; weights unchanged")
         _write_json(round_dir / "report.json", report)
         return report

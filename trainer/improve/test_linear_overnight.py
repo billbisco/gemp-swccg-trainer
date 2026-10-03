@@ -124,6 +124,28 @@ class FinishedFilterTest(unittest.TestCase):
         self.assertEqual(len(kept), 1)
         self.assertEqual(kept[0]["outcome"]["winner"], DARK_PLAYER)
 
+    def test_scores_cap_as_loss_for_deciding_seat(self) -> None:
+        games = [
+            {
+                "outcome": {
+                    "gameIndex": 4,
+                    "finished": False,
+                    "winner": "",
+                    "stopper": "maxDecisions=8000",
+                    "decidingPlayer": DARK_PLAYER,
+                    "darkLifeForce": 22,
+                    "lightLifeForce": 18,
+                }
+            }
+        ]
+        kept = select_finished(games, {4})
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["outcome"]["winner"], LIGHT_PLAYER)
+        self.assertEqual(kept[0]["outcome"]["darkLifeForce"], 0)
+        self.assertEqual(kept[0]["outcome"]["lightLifeForce"], 30)
+        # Real board life force is not the score, and two different caps match.
+        self.assertNotEqual(22, kept[0]["outcome"]["darkLifeForce"])
+
 
 
 class HeadToHeadGateTest(unittest.TestCase):
@@ -155,6 +177,8 @@ class HeadToHeadGateTest(unittest.TestCase):
         self.assertIn("no HEURISTIC gate", PROMOTION_RULE)
         self.assertIn("not Beginner", PROMOTION_RULE)
         self.assertIn("zeros pack is not a gate", PROMOTION_RULE)
+        self.assertIn("deciding seat", PROMOTION_RULE)
+        self.assertIn("0 vs 30", PROMOTION_RULE)
         self.assertNotIn("heuristic-v1-wc96-r08-blend-adv25", PROMOTION_RULE)
         self.assertNotIn("vs BEGINNER", PROMOTION_RULE)
         self.assertEqual(YODA_SEAT, "ADVANCED")
@@ -183,20 +207,23 @@ class HeadToHeadGateTest(unittest.TestCase):
     def test_measure_seat_scores_candidate_side_and_skips_caps(self) -> None:
         path = Path("/tmp/gate-seat.csv")
         path.write_text(
-            "gameIndex,darkAi,lightAi,winner,error,darkLifeForce,lightLifeForce\n"
-            "1,LINEAR,LINEAR,~OzzelBot,,10,4\n"
-            "2,LINEAR,LINEAR,~AckbarBot,,0,6\n"
-            "3,LINEAR,LINEAR,,maxDecisions=8000,1,1\n",
+            "gameIndex,darkAi,lightAi,winner,error,darkLifeForce,lightLifeForce,decidingPlayer\n"
+            "1,LINEAR,LINEAR,~OzzelBot,,10,4,\n"
+            "2,LINEAR,LINEAR,~AckbarBot,,0,6,\n"
+            "3,LINEAR,LINEAR,,maxDecisions=8000,1,1,\n"
+            "4,LINEAR,LINEAR,,maxMillis=180000,40,10,~OzzelBot\n",
             encoding="utf-8",
         )
         dark = measure_seat_csv(path, "DARK")
         light = measure_seat_csv(path, "LIGHT")
-        self.assertEqual(dark["games"], 2)
+        # Row 3 has no deciding seat, so it still drops.
+        # Row 4: Dark was deciding, so Dark loses with LF 0 vs 30 (not the raw 40 vs 10).
+        self.assertEqual(dark["games"], 3)
         self.assertEqual(dark["wins"], 1)
-        self.assertEqual(dark["winRate"], 0.5)
-        self.assertEqual(dark["meanLfDiff"], 0.0)  # (10-4) + (0-6) = 0
-        self.assertEqual(light["wins"], 1)
-        self.assertEqual(light["meanLfDiff"], 0.0)
+        self.assertEqual(dark["winRate"], 1 / 3)
+        self.assertEqual(dark["meanLfDiff"], -10.0)  # (6 + -6 + -30) / 3
+        self.assertEqual(light["wins"], 2)
+        self.assertEqual(light["meanLfDiff"], 10.0)
 
 
 class OpponentGateTest(unittest.TestCase):

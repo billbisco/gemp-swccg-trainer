@@ -47,7 +47,7 @@ class LinearSelfPlayTest(unittest.TestCase):
         pack = make_pack("zeros")
         self.assertEqual(pack["schema"], "linear.v1")
         self.assertEqual(pack["featureSchemaVersion"], 1)
-        self.assertEqual(pack["packedDim"], 128)
+        self.assertEqual(pack["packedDim"], PACKED_DIM)
         self.assertEqual(pack["bagHashDim"], 16)
         self.assertEqual(pack["actionFeatDim"], ACTION_FEAT_DIM)
         self.assertEqual(pack["bias"], 0.0)
@@ -334,5 +334,33 @@ class CandidateMeasurementTest(unittest.TestCase):
         self.assertEqual(stats["asLight"]["meanLfDiff"], 36.0)
 
 
+class StallScoreTest(unittest.TestCase):
+    def test_cap_is_a_fixed_loss_not_a_speed_bonus(self) -> None:
+        from trainer.improve.linear_selfplay import stall_outcome
+        fast = stall_outcome({
+            "stopper": "maxDecisions=8000",
+            "decidingPlayer": DARK_PLAYER,
+            "darkLifeForce": 40,
+            "lightLifeForce": 1,
+            "finished": False,
+        })
+        slow = stall_outcome({
+            "stopper": "maxMillis=180000",
+            "decidingPlayer": DARK_PLAYER,
+            "darkLifeForce": 5,
+            "lightLifeForce": 39,
+            "finished": False,
+        })
+        self.assertIsNotNone(fast)
+        self.assertIsNotNone(slow)
+        self.assertEqual(fast["winner"], LIGHT_PLAYER)
+        self.assertEqual(fast["darkLifeForce"], slow["darkLifeForce"])
+        self.assertEqual(fast["lightLifeForce"], slow["lightLifeForce"])
+        self.assertEqual(fast["darkLifeForce"], 0)
+        self.assertEqual(fast["lightLifeForce"], 30)
+        self.assertIsNone(stall_outcome({"stopper": "maxDecisions=8000", "decidingPlayer": ""}))
+        self.assertIsNone(stall_outcome({"stopper": "finished", "decidingPlayer": DARK_PLAYER, "winner": DARK_PLAYER}))
+
 if __name__ == "__main__":
     unittest.main()
+

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/billbisco/gemp-swccg-trainer/schemas/information-set.v1.schema.json",
   "title": "InformationSetV1",
-  "description": "Decider legal information set for AckbarBot learned-policy v1. Hybrid: packed float32[128] plus sparse bags. Never an exact opponent decklist. Not a trained policy.",
+  "description": "Decider legal information set for AckbarBot learned-policy v1. Hybrid: packed float32[211] plus sparse bags. Never an exact opponent decklist. Not a trained policy.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -198,12 +198,12 @@
     },
     "packed": {
       "type": "array",
-      "minItems": 128,
-      "maxItems": 128,
+      "minItems": 211,
+      "maxItems": 211,
       "items": {
         "type": "number"
       },
-      "description": "float32[128] summary. Bags are not flattened into this array."
+      "description": "float32[211] summary. Original 128 plus appended public table facts. Bags are not flattened into this array."
     },
     "bagHash": {
       "type": "array",
