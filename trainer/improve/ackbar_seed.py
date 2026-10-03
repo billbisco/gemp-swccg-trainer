@@ -5,28 +5,27 @@ constructs ``AdvancedAi``. Keyword numbers are the arrays in
 ``AdvancedAi.java``, not BeginnerAi and not ``getPassPenalty`` (320), which
 is a separate subtraction and not a keyword weight.
 
-``LinearPolicyAi`` action features (24), in order:
+``LinearPolicyAi`` action features, in order:
 
-0 pass flag
+0 pass flag (not a keyword weight; the action-table pass kind is separate)
 1 integer value normalized to [0, 1]
 2 index normalized across candidates
 3..18 text-hash one-hot (16 buckets)
 19..22 blueprintId hash one-hot (4 buckets)
 23 constant 1
+24.. decision-kind indicators, one per AdvancedAi action keyword
+    (ACTION_WEIGHTS then ACTION_PENALTIES). A kind is 1 when the lowercased
+    text contains that keyword, same as HeuristicAiBase.scoreKeywords.
+    "initiate battle" also sets "battle". Scores are not invented here.
 
-Those hash buckets are not keyword identities. A keyword is copied only when
-its name is one of those features. Anything else stays 0. Packed weights, bag
-weights, and bias stay 0.
+Hash buckets, the pass flag, integerNorm, indexNorm, and the constant 1 stay
+0. Packed weights, bag weights, and bias stay 0. Each kind weight is the
+AdvancedAi action-table score times the scale. Choice-table scores are a
+second table and are not added, including choice pass = -40.
 
-The only name match is action-penalty ``pass`` = -160 onto feature 0. The
-choice-table ``pass`` = -40 is a second table and there is no second pass
-feature, so it is not added. Sign stays negative, the same as Yoda.
-
-Any non-zero action weight disables ``LinearPolicyAi``'s all-zero anti-stall
-prior. Every positive scale of this pack is the same greedy policy: pass
-scores below 0 and every other action scores 0, so the earliest legal
-candidate wins. Scales are still gated separately because the gym shuffle is
-unseeded.
+Any non-zero action weight disables the all-zero soft anti-stall prior. The
+once-per-phase hard cap still applies. Scales are gated separately because
+the gym shuffle is unseeded.
 """
 from __future__ import annotations
 
@@ -48,11 +47,13 @@ from trainer.improve.linear_selfplay import (
     AF_BP_HASH,
     AF_INDEX,
     AF_INTEGER,
+    AF_KIND,
     AF_ONES,
     AF_PASS,
     AF_TEXT_BUCKETS,
     AF_TEXT_HASH,
     BAG_HASH_DIM,
+    KIND_KEYWORDS,
     PACKED_DIM,
     REPO,
     W_LEN,
@@ -124,10 +125,10 @@ YODA_CHOICE_KEYWORDS: tuple[tuple[str, int], ...] = (
     ("pass", -40),
 )
 
-# Feature index -> the keyword name that feature actually is.
-# Only the pass flag has a keyword name. Hash buckets do not.
+# Feature index -> AdvancedAi action-table keyword. Hash buckets and the
+# pass flag are not keyword identities. Choice-table names are not here.
 ACTION_FEATURE_KEYWORD: dict[int, str] = {
-    AF_PASS: "pass",
+    AF_KIND + i: name for i, name in enumerate(KIND_KEYWORDS)
 }
 
 
@@ -136,6 +137,7 @@ def action_feature_names() -> list[str]:
     names.extend(f"textHash{i}" for i in range(AF_TEXT_BUCKETS))
     names.extend(f"blueprintHash{i}" for i in range(AF_BP_BUCKETS))
     names.append("ones")
+    names.extend(f"kind:{name}" for name in KIND_KEYWORDS)
     if len(names) != ACTION_FEAT_DIM:
         raise RuntimeError(f"feature name count {len(names)} != {ACTION_FEAT_DIM}")
     if names[AF_PASS] != "pass" or names[AF_INTEGER] != "integerNorm":
@@ -144,17 +146,21 @@ def action_feature_names() -> list[str]:
         raise RuntimeError("feature order drifted from LinearPolicyAi")
     if names[AF_BP_HASH] != "blueprintHash0" or names[AF_ONES] != "ones":
         raise RuntimeError("feature order drifted from LinearPolicyAi")
+    if names[AF_KIND] != "kind:force drain":
+        raise RuntimeError("kind block drifted from LinearPolicyAi")
+    if tuple(name.split(":", 1)[1] for name in names[AF_KIND:]) != KIND_KEYWORDS:
+        raise RuntimeError("kind order drifted")
     return names
 
 
 def yoda_action_base() -> list[float]:
-    """Keyword scores aligned onto the 24 action weights. Unmapped stay 0."""
+    """Action-table scores on the kind features. Everything else stays 0."""
     weights = [0.0] * ACTION_FEAT_DIM
-    for keyword, score in YODA_ACTION_KEYWORDS:
-        matched = [idx for idx, name in ACTION_FEATURE_KEYWORD.items() if name == keyword]
-        if len(matched) != 1:
-            continue
-        weights[matched[0]] = float(score)
+    by_name = {keyword: float(score) for keyword, score in YODA_ACTION_KEYWORDS}
+    if set(by_name) != set(KIND_KEYWORDS):
+        raise RuntimeError("Yoda action keywords drifted from the kind block")
+    for idx, name in ACTION_FEATURE_KEYWORD.items():
+        weights[idx] = by_name[name]
     return weights
 
 
@@ -235,13 +241,14 @@ def write_seed_packs(seeds_dir: Path) -> list[Path]:
         "actionFeatures": action_feature_names(),
         "mapped": [
             {
-                "feature": "pass",
-                "index": AF_PASS,
+                "feature": f"kind:{keyword}",
+                "index": AF_KIND + i,
                 "table": "action",
-                "keyword": "pass",
-                "yoda": -160,
-                "note": "AdvancedAi.ACTION_PENALTIES. Choice-table pass -40 is not added.",
+                "keyword": keyword,
+                "yoda": score,
+                "note": "AdvancedAi action table. Choice-table scores are not added.",
             }
+            for i, (keyword, score) in enumerate(YODA_ACTION_KEYWORDS)
         ],
         "unmappedKeywords": unmapped_keywords(),
         "featuresWithoutKeyword": features_without_keyword(),
@@ -251,10 +258,11 @@ def write_seed_packs(seeds_dir: Path) -> list[Path]:
         },
         "scales": list(SCALES),
         "policyNote": (
-            "Positive scales share one greedy policy. Pass is strictly negative "
-            "and every other action weight is 0, so non-pass actions tie at 0 "
-            "and the earliest candidate wins. The zeros anti-stall prior is off "
-            "whenever any weight is non-zero."
+            "Each decision-kind weight is the AdvancedAi action-table score "
+            "times the scale. Packed, bag, pass flag, norms, hashes, and the "
+            "constant 1 stay 0. Choice-table scores are not added. The zeros "
+            "soft anti-stall prior is off whenever any weight is non-zero. "
+            "The once-per-phase hard cap still applies."
         ),
     }
     (seeds_dir / "alignment.json").write_text(
@@ -346,7 +354,7 @@ def run_ladder(
         kept_path = Path(winner["path"])
         note = (
             f"Ackbar seed ladder kept scale {winner['scale']} "
-            "(Yoda action pass * scale on feature 0 only). "
+            "(each decision-kind weight is the AdvancedAi action score times scale). "
             "Beat the zeros pack on both seats."
         )
         init = f"ackbar-seed-scale-{winner['scale']}"
@@ -375,7 +383,7 @@ def run_ladder(
         "winner": winner,
         "rows": rows,
         "unmappedKeywords": unmapped_keywords(),
-        "mapped": {"pass": -160, "feature": 0},
+        "mapped": {keyword: score for keyword, score in YODA_ACTION_KEYWORDS},
         "keptWeights": str((out_dir / "current.linear.json").resolve()),
         "note": note,
     }

@@ -7,13 +7,17 @@ the keyword mutate loop.
 Update rule
 -----------
 ``LinearPolicyAi`` scores an action as bias, plus a direct dot of the last
-24 weights with that action's features, plus an interaction stored in the
-same ``W`` (length still 128 + bagHashDim + 24). Packed slot ``i`` contributes
-``W[i] * packed[i] * actionFeat[i % 23]``. Each bag-hash slot is paired the
-same way (``k % 23``). Feature 23 is the constant 1 and is not paired, so it
-still cannot change the choice. Bias cannot either. The gym policy stays
-greedy argmax. All-zero ``W`` still scores every action the same, so the
-gym anti-stall prior still applies only then.
+``actionFeatDim`` weights with that action's features, plus an interaction
+stored in the same ``W`` (length 128 + bagHashDim + actionFeatDim). Packed
+slot ``i`` contributes ``W[i] * packed[i] * actionFeat[i % 23]``. Each
+bag-hash slot is paired the same way (``k % 23``). Feature 23 is the constant
+1 and is not paired, so it still cannot change the choice. Decision-kind
+indicators start at feature 24 (AdvancedAi action keywords, contains-match,
+not mutually exclusive). They are direct weights only, and this update trains
+them. Bias cannot change the choice. The gym policy stays greedy argmax.
+All-zero ``W`` still scores every action the same, so the gym soft anti-stall
+prior still applies only then. The once-per-phase hard cap applies even when
+``W`` is non-zero.
 
 FEATURES traces include ``state.packed``, ``state.bagHash`` (the 16-d
 vector ``LinearPolicyAi.bagHash`` writes), and ``chosen``, plus a capped option
@@ -54,9 +58,6 @@ SCHEMA = "linear.v1"
 FEATURE_SCHEMA_VERSION = 1
 PACKED_DIM = 128
 BAG_HASH_DIM = 16  # LinearPolicyAi.DEFAULT_BAG_HASH_DIM / zeros()
-ACTION_FEAT_DIM = 24
-W_LEN = PACKED_DIM + BAG_HASH_DIM + ACTION_FEAT_DIM  # 168
-
 AF_PASS = 0
 AF_INTEGER = 1
 AF_INDEX = 2
@@ -65,15 +66,51 @@ AF_TEXT_BUCKETS = 16
 AF_BP_HASH = 19
 AF_BP_BUCKETS = 4
 AF_ONES = 23
-# Every action feature except the constant 1. Matches LinearPolicyAi.INTERACT_FEAT_DIM.
+# Every action feature except the constant 1 and the kind block after it.
+# Matches LinearPolicyAi.INTERACT_FEAT_DIM.
 INTERACT_FEAT_DIM = AF_ONES
+AF_KIND = 24
+# AdvancedAi.ACTION_WEIGHTS then ACTION_PENALTIES. Strings only; scores live
+# in AdvancedAi.java and are copied by ackbar_seed, not invented here.
+KIND_KEYWORDS = (
+    "force drain",
+    "initiate battle",
+    "battle",
+    "weapon",
+    "fire",
+    "deploy",
+    "play",
+    "move",
+    "activate",
+    "retrieve",
+    "draw",
+    "steal",
+    "capture",
+    "download",
+    "search",
+    "react",
+    "cancel",
+    "take into hand",
+    "pass",
+    "forfeit",
+    "lose",
+    "place in lost pile",
+    "place in used pile",
+    "return to hand",
+    "sacrifice",
+    "revert",
+)
+ACTION_FEAT_DIM = AF_KIND + len(KIND_KEYWORDS)
+W_LEN = PACKED_DIM + BAG_HASH_DIM + ACTION_FEAT_DIM  # 128 + 16 + 50
 INTEGER_ENUM_CAP = 24
 
 DARK_PLAYER = "~OzzelBot"
 LIGHT_PLAYER = "~AckbarBot"
 LF_SCALE = 30.0
 LF_MIX = 0.25
-WEIGHT_CLIP = 1.0
+# Holds AdvancedAi keyword scores at the seed ladder's top scale (2 * 160).
+# A clip of 1 would flatten every keyword weight on the first update.
+WEIGHT_CLIP = 400.0
 
 GEMP_SERVER = Path("/workspace/swccg-gemp/src/gemp-swccg-server")
 DEFAULT_CP_FILE = Path("/workspace/gemp-swccg-trainer/runs/wc96-loop/gym.classpath")
@@ -82,7 +119,9 @@ REPO = Path("/workspace/gemp-swccg-trainer")
 
 LIMITATION = (
     "Each packed slot i is paired with only one action feature (i mod 23), not a "
-    "full bilinear map, and feature 23 (constant 1) is unpaired. Bag-hash is paired "
+    "full bilinear map, and feature 23 (constant 1) is unpaired. Decision-kind "
+    "indicators (feature 24 on) are direct weights and are trained; they are not "
+    "part of the packed/bag pairing. Bag-hash is paired "
     "the same way. FEATURES traces log state.bagHash (LinearPolicyAi.bagHash, "
     "16-d); a missing field is zeros and those weights stay put. "
     "The update is a softmax surrogate of REINFORCE (the deployed policy is still "
@@ -139,6 +178,10 @@ def action_features(
     if blueprint_id:
         feat[AF_BP_HASH + bucket(blueprint_id, AF_BP_BUCKETS)] = 1.0
     feat[AF_ONES] = 1.0
+    kind_text = (text or "").lower()
+    for k, keyword in enumerate(KIND_KEYWORDS):
+        if keyword in kind_text:
+            feat[AF_KIND + k] = 1.0
     return feat
 
 
@@ -249,7 +292,7 @@ def pack_weights(pack: dict[str, Any]) -> list[float]:
     if int(pack.get("bagHashDim", -1)) != BAG_HASH_DIM:
         raise ValueError("bagHashDim must be 16 for this trainer")
     if int(pack.get("actionFeatDim", -1)) != ACTION_FEAT_DIM:
-        raise ValueError("actionFeatDim must be 24")
+        raise ValueError(f"actionFeatDim must be {ACTION_FEAT_DIM}")
     return [float(x) for x in w]
 
 
@@ -346,7 +389,8 @@ def _reinforce_grad(
     """d log softmax(scores) / d W, at ``weights``.
 
     Direct feature 23 is the constant 1, so its gradient is identically 0.
-    Packed slot i multiplies action feature ``i % 23``. Bag slot k does the same.
+    Decision-kind features after it are trained. Packed slot i multiplies
+    action feature ``i % 23``. Bag slot k does the same.
     """
     scores = [score_of(packed, bag, feat, weights) for feat in feats]
     pi = _softmax(scores, 1.0)
@@ -368,7 +412,9 @@ def _reinforce_grad(
         m = k % INTERACT_FEAT_DIM
         grad[idx] = float(value) * (feats[chosen][m] - expected[m])
     base = PACKED_DIM + BAG_HASH_DIM
-    for j in range(AF_ONES):
+    for j in range(ACTION_FEAT_DIM):
+        if j == AF_ONES:
+            continue
         if base + j >= len(grad):
             break
         grad[base + j] = feats[chosen][j] - expected[j]

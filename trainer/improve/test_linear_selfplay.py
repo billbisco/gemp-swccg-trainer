@@ -9,9 +9,12 @@ from trainer.improve.linear_selfplay import (
     ACTION_FEAT_DIM,
     AF_INDEX,
     AF_INTEGER,
+    AF_KIND,
     AF_ONES,
     AF_PASS,
     BAG_HASH_DIM,
+    KIND_KEYWORDS,
+    WEIGHT_CLIP,
     DARK_PLAYER,
     INTERACT_FEAT_DIM,
     PACKED_DIM,
@@ -45,11 +48,11 @@ class LinearSelfPlayTest(unittest.TestCase):
         self.assertEqual(pack["featureSchemaVersion"], 1)
         self.assertEqual(pack["packedDim"], 128)
         self.assertEqual(pack["bagHashDim"], 16)
-        self.assertEqual(pack["actionFeatDim"], 24)
+        self.assertEqual(pack["actionFeatDim"], ACTION_FEAT_DIM)
         self.assertEqual(pack["bias"], 0.0)
         weights = pack_weights(pack)
         self.assertEqual(len(weights), W_LEN)
-        self.assertEqual(W_LEN, PACKED_DIM + BAG_HASH_DIM + 24)
+        self.assertEqual(W_LEN, PACKED_DIM + BAG_HASH_DIM + ACTION_FEAT_DIM)
         self.assertTrue(all(v == 0.0 for v in weights))
 
     def test_action_features_pass_and_ones(self) -> None:
@@ -57,6 +60,24 @@ class LinearSelfPlayTest(unittest.TestCase):
         self.assertEqual(feat[AF_PASS], 1.0)
         self.assertEqual(feat[AF_ONES], 1.0)
         self.assertEqual(sum(feat[3:19]), 1.0)
+
+    def test_kind_features_match_contains_and_are_trained(self) -> None:
+        feat = action_features("Initiate battle", "", False, 0.0, 0.0)
+        self.assertEqual(feat[AF_KIND + KIND_KEYWORDS.index("initiate battle")], 1.0)
+        self.assertEqual(feat[AF_KIND + KIND_KEYWORDS.index("battle")], 1.0)
+        self.assertEqual(feat[AF_KIND + KIND_KEYWORDS.index("deploy")], 0.0)
+        self.assertEqual(feat[AF_PASS], 0.0)
+        pack = make_pack("zeros")
+        base = PACKED_DIM + BAG_HASH_DIM
+        fire = base + AF_KIND + KIND_KEYWORDS.index("fire")
+        drain = base + AF_KIND + KIND_KEYWORDS.index("force drain")
+        pack["W"][drain] = 320.0
+        report = update_from_games(pack, synthetic_games(4), lr=0.1)
+        self.assertEqual(report["updateRule"], UPDATE_REINFORCE)
+        self.assertGreater(pack["W"][fire], 0.0)
+        self.assertGreater(pack["W"][drain], 300.0)
+        self.assertGreaterEqual(WEIGHT_CLIP, 320.0)
+        self.assertEqual(pack["W"][base + AF_ONES], 0.0)
 
     def test_integer_samples_wide_span_includes_ends(self) -> None:
         values = integer_samples(0, 100, 7)
@@ -99,7 +120,7 @@ class LinearSelfPlayTest(unittest.TestCase):
         base = PACKED_DIM + BAG_HASH_DIM
         weights = pack["W"]
         moved = [AF_PASS, AF_INTEGER, AF_INDEX]
-        for j in range(24):
+        for j in range(ACTION_FEAT_DIM):
             if j in moved:
                 self.assertNotEqual(weights[base + j], 0.0)
             else:
