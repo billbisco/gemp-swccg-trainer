@@ -357,7 +357,8 @@ class StallScoreTest(unittest.TestCase):
         self.assertEqual(fast["darkLifeForce"], slow["darkLifeForce"])
         self.assertEqual(fast["lightLifeForce"], slow["lightLifeForce"])
         self.assertEqual(fast["darkLifeForce"], 0)
-        self.assertEqual(fast["lightLifeForce"], 30)
+        self.assertEqual(fast["darkLifeForce"] - fast["lightLifeForce"], -200)
+        self.assertEqual(fast["lightLifeForce"], 200)
         self.assertIsNone(stall_outcome({"stopper": "maxDecisions=8000", "decidingPlayer": ""}))
         self.assertIsNone(stall_outcome({"stopper": "finished", "decidingPlayer": DARK_PLAYER, "winner": DARK_PLAYER}))
 

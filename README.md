@@ -42,7 +42,7 @@ Gym FEATURES traces (`-Dheadless.traceLevel=FEATURES`) embed `state.packed` and 
 
 ### Overnight LINEAR vs LINEAR loop
 
-`scripts/linear_overnight.sh` repeats self-play (same candidate weights on both seats, WC96, `premiere_anh`, no shuffle seed). Each round keeps up to 8 games (a maxDecisions or maxMillis stop counts as a loss for the deciding seat, life force 0 vs 30, not a speed bonus) and updates with `trainer.improve.linear_selfplay`. It then gates the candidate vs BEGINNER, 4 games per seat. The candidate becomes the training champ only when **both** seats are not worse than the previous kept pack on win rate **and** mean life-force differential. Pointer: `runs/linear-overnight/CURRENT.json` and `current.linear.json`. It does not write `champs/_promoted/`.
+`scripts/linear_overnight.sh` repeats self-play (same candidate weights on both seats, WC96, `premiere_anh`, no shuffle seed). Each round keeps up to 8 games (a maxDecisions or maxMillis stop counts as a loss for the deciding seat, life force 0 vs 200 (margin -200), not a speed bonus) and updates with `trainer.improve.linear_selfplay`. It then gates the candidate vs BEGINNER, 4 games per seat. The candidate becomes the training champ only when **both** seats are not worse than the previous kept pack on win rate **and** mean life-force differential. Pointer: `runs/linear-overnight/CURRENT.json` and `current.linear.json`. It does not write `champs/_promoted/`.
 
 ```bash
 # foreground

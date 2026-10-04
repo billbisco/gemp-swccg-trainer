@@ -24,7 +24,7 @@ not YodaBot/``ADVANCED``, and not Beginner.
 A candidate is kept only when its mean life-force differential is not worse
 than that previous pack on both seats. Equality counts. Win rate is logged,
 not a bar. A maxDecisions or maxMillis game counts as a loss for the seat
-that was deciding, with a fixed bad life-force result (0 vs 30), not a
+that was deciding, with a fixed bad life-force result (0 vs 200, margin -200), not a
 reward for finishing faster. At least
 2 finished games per seat. The pointer is
 ``runs/linear-overnight/CURRENT.json`` plus ``current.linear.json``.
@@ -72,7 +72,7 @@ PROMOTION_RULE = (
     "There is no YodaBot/ADVANCED gate and no HEURISTIC gate. "
     "The zeros pack is not a gate opponent. Beginner is never the bar. "
     "A maxDecisions or maxMillis game is a loss for the deciding seat with "
-    "fixed life force 0 vs 30. Speed is not a reward. At least "
+    "fixed life force 0 vs 200 (margin -200 for the deciding seat). Speed is not a reward. At least "
     "2 finished games per seat are required. Self-play is LINEAR vs LINEAR, WC96, "
     "premiere_anh, no shuffle seed. Never writes champs/_promoted. "
     "Do not reset current.linear.json and do not re-seed from Yoda while a learned pack is kept."
@@ -179,7 +179,7 @@ def select_finished(games: list[dict[str, Any]], indexes: set[int]) -> list[dict
     """Keep games the CSV counted, including scored decision/time caps.
 
     A cap is rewritten to a loss for decidingPlayer with fixed life force
-    0 vs 30. Games without that seat, and other unfinished games, drop.
+    0 vs 200 (margin -200). Games without that seat, and other unfinished games, drop.
     """
     kept: list[dict[str, Any]] = []
     for game in games:
@@ -571,7 +571,7 @@ def measure_seat_csv(csv_path: Path, side: str) -> dict[str, Any]:
     """Score one side of a gym CSV.
 
     ``side`` is ``DARK`` or ``LIGHT``. A maxDecisions or maxMillis row is a
-    loss for decidingPlayer with fixed life force 0 vs 30. That margin does
+    loss for decidingPlayer with fixed life force 0 vs 200 (margin -200). That margin does
     not use the raw life-force cells or elapsedMs. Other errors are skipped.
     Life-force differential is that side's scored life force minus the other.
     """

@@ -756,10 +756,11 @@ def _bag_hash_of(state: dict[str, Any]) -> list[float]:
 
 
 # A cap is a loss for the seat that was deciding. The life-force result is
-# fixed (0 vs LF_SCALE), not the board's LF and not a function of elapsed
-# time or how many decisions were left. Finishing sooner is not a reward.
+# fixed (0 vs 200, margin -200), not the board's LF and not a function of
+# elapsed time or how many decisions were left. Finishing sooner is not a
+# reward. This is harsher than the clipped training scale (LF_SCALE).
 STALL_LOSER_LF = 0
-STALL_WINNER_LF = int(LF_SCALE)
+STALL_WINNER_LF = 200
 
 
 def is_cap_stop(text: str | None) -> bool:
@@ -836,7 +837,7 @@ def seat_return(side: str, outcome: dict[str, Any]) -> tuple[float, float | None
 
     reward = win (+1/-1/0) + LF_MIX * clip((ownLF-oppLF)/30, -1, 1).
     Unfinished / missing LF contributes no life-force term.
-    A cap scored by stall_outcome already carries the fixed bad life force.
+    A cap scored by stall_outcome already carries life force 0 vs 200 (margin -200).
     """
     winner = str(outcome.get("winner") or "")
     if winner == DARK_PLAYER:
